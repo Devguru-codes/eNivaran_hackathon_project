@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Up - Pothole Reporting</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+            background: linear-gradient(135deg, #f7971e 0%, #ffd200 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .signup-container {
+            background-color: #fff;
+            padding: 40px 32px 32px 32px;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(44, 62, 80, 0.15);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            position: relative;
+        }
+        .signup-logo {
+            width: 56px;
+            height: 56px;
+            margin-bottom: 18px;
+            display: inline-block;
+        }
+        .signup-container h2 {
+            margin-bottom: 22px;
+            color: #222;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        .signup-container label {
+            display: block;
+            text-align: left;
+            margin-bottom: 6px;
+            color: #444;
+            font-weight: 500;
+        }
+        .signup-container input[type="text"],
+        .signup-container input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 18px;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 15px;
+            background: #f8fafc;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .signup-container input[type="text"]:focus,
+        .signup-container input[type="password"]:focus {
+            border-color: #f7971e;
+            outline: none;
+            box-shadow: 0 0 0 2px #fff3cd;
+            background: #fff;
+        }
+        .signup-container button {
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(90deg, #28a745 60%, #218838 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-top: 5px;
+            box-shadow: 0 2px 8px rgba(40,167,69,0.08);
+            transition: background 0.3s, box-shadow 0.2s;
+        }
+        .signup-container button:hover {
+            background: linear-gradient(90deg, #218838 60%, #28a745 100%);
+            box-shadow: 0 4px 16px rgba(40,167,69,0.13);
+        }
+        .signup-container .login-link {
+            margin-top: 20px;
+            font-size: 15px;
+            color: #666;
+        }
+        .signup-container .login-link a {
+            color: #007bff;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .signup-container .login-link a:hover {
+            text-decoration: underline;
+        }
+        .flash-messages {
+            list-style: none;
+            padding: 0;
+            margin-bottom: 18px;
+        }
+        .flash-messages li {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            font-size: 15px;
+        }
+        .flash-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div class="signup-container">
+        <div class="signup-logo">
+            <!-- Simple SVG icon for modern look -->
+            <svg width="56" height="56" viewBox="0 0 56 56" fill="none">
+                <circle cx="28" cy="28" r="28" fill="#28a745" opacity="0.13"/>
+                <path d="M18 38V34C18 31.7909 19.7909 30 22 30H34C36.2091 30 38 31.7909 38 34V38" stroke="#28a745" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="28" cy="22" r="6" stroke="#28a745" stroke-width="2.5"/>
+            </svg>
+        </div>
+        <h2>Sign Up</h2>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            <ul class="flash-messages">
+            {% for category, message in messages %}
+              {% if category == 'error' %} {# Only show errors on signup page #}
+              <li class="flash-{{ category }}">{{ message }}</li>
+              {% endif %}
+            {% endfor %}
+            </ul>
+          {% endif %}
+        {% endwith %}
+
+        <form action="{{ url_for('signup') }}" method="post">
+            <div>
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+            <div>
+                <label for="full_name">Full Name</label>
+                <input type="text" id="full_name" name="full_name" required autocomplete="name">
+            </div>
+            <div>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="new-password">
+            </div>
+            <button type="submit">Sign Up</button>
+        </form>
+        <div class="login-link">
+            Already have an account? <a href="{{ url_for('login') }}">Login</a>
+        </div>
+    </div>
+</body>
+</html>
