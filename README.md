@@ -1,6 +1,5 @@
 # Smart Pothole Detection & Civic Management
-## This project was built for the ESOC-X hackathon and serves as a proof-of-concept for our proposed idea for CodeClash 2.0
-### Developed by Team DevBytes for ESOC-X Hackathon (Code Brown)
+
 
 eNivaran is an ML-powered road safety and civic issue reporting system designed to help create safer, smarter cities through community participation and cutting-edge technology. Users can report civic issues like potholes, view existing complaints, and track their status, while administrators can manage and update these reports. The system utilizes an AI model to detect potholes from images and includes functionality to prevent duplicate complaints.
 
