@@ -4,7 +4,98 @@ import base64
 import sqlite3
 import io
 import datetime
+import json
 from flask import Flask, request, render_template, jsonify, send_from_directory, session, redirect, url_for, flash
+from flask.json.provider import DefaultJSONProvider
+import logging
+from flask.logging import default_handler
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('eNivaran')
+logger.addHandler(default_handler)
+
+def handle_json_error(e):
+    """Handle JSON serialization errors"""
+    logger.error(f"JSON Serialization Error: {str(e)}")
+    return jsonify({
+        'error': 'Internal server error occurred while processing the request.',
+        'details': str(e) if app.debug else None
+    }), 500
+
+def handle_value_error(e):
+    """Handle data type conversion errors"""
+    logger.error(f"Value Error: {str(e)}")
+    return jsonify({
+        'error': 'Invalid data format in request.',
+        'details': str(e) if app.debug else None
+    }), 400
+
+def handle_key_error(e):
+    """Handle missing key errors"""
+    logger.error(f"Key Error: {str(e)}")
+    return jsonify({
+        'error': 'Required data missing from request.',
+        'details': str(e) if app.debug else None
+    }), 400
+
+def handle_sqlite_error(e):
+    """Handle database errors"""
+    logger.error(f"Database Error: {str(e)}")
+    return jsonify({
+        'error': 'Database operation failed.',
+        'details': str(e) if app.debug else None
+    }), 500
+
+class CustomJSONEncoder(DefaultJSONProvider):
+    def __init__(self, app):
+        super().__init__(app)
+        self.options = {
+            'ensure_ascii': False,
+            'sort_keys': False,
+            'compact': True
+        }
+
+    def default(self, obj):
+        try:
+            if isinstance(obj, datetime.datetime):
+                return obj.isoformat()
+            if isinstance(obj, sqlite3.Row):
+                return dict(obj)
+            if isinstance(obj, bytes):
+                return base64.b64encode(obj).decode('utf-8')
+            return super().default(obj)
+        except Exception as e:
+            print(f"JSON encoding error: {e}")
+            return None
+        
+    def dumps(self, obj, **kwargs):
+        def convert(o):
+            if isinstance(o, datetime.datetime):
+                return o.isoformat()
+            elif isinstance(o, sqlite3.Row):
+                return dict(o)
+            elif isinstance(o, bytes):
+                return base64.b64encode(o).decode('utf-8')
+            elif isinstance(o, dict):
+                return {k: convert(v) for k, v in o.items()}
+            elif isinstance(o, (list, tuple)):
+                return [convert(v) for v in o]
+            return o
+
+        try:
+            return json.dumps(convert(obj), ensure_ascii=False, **kwargs)
+        except Exception as e:
+            print(f"JSON dumps error: {e}")
+            return json.dumps(None)
+
+    def loads(self, s, **kwargs):
+        try:
+            return json.loads(s, **kwargs)
+        except Exception as e:
+            print(f"JSON loads error: {e}")
+            return None
+
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 from geopy.geocoders import Nominatim
@@ -12,38 +103,113 @@ from geopy.exc import GeocoderServiceError
 
 # Import the pothole detection function from the existing file
 from pothole_detection import run_pothole_detection
-
 from duplication_detection_code import get_duplicate_detector
 
-# (Duplication detection will be added after basic flow is working)
-
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'dev-secret-key-replace-later' # Replace with a strong, random secret key for production
+app.config['SECRET_KEY'] = 'dev-secret-key-replace-later'
 
-# Configure upload folder
-UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
+# Add Jinja2 filter for base64 encoding
+def b64encode_filter(data):
+    """Jinja2 filter to base64 encode binary data."""
+    if data is None:
+        return None
+    return base64.b64encode(data).decode('utf-8')
+
+app.jinja_env.filters['b64encode'] = b64encode_filter
+
+# Configure JSON provider
+app.json = CustomJSONEncoder(app)
+
+# --- Application Configuration ---
+BASE_DIR = os.path.dirname(__file__)
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+
+app.config.update(
+    UPLOAD_FOLDER=UPLOAD_FOLDER,
+    SECRET_KEY='dev-secret-key-replace-later',  # Move this to environment variable in production
+    MAX_CONTENT_LENGTH=16 * 1024 * 1024  # Limit file size to 16MB
+)
+
+# Register error handlers
+app.register_error_handler(json.JSONDecodeError, handle_json_error)
+app.register_error_handler(ValueError, handle_value_error)
+app.register_error_handler(KeyError, handle_key_error)
+app.register_error_handler(sqlite3.Error, handle_sqlite_error)
+
+# Add generic error handlers
+@app.errorhandler(404)
+def not_found_error(error):
+    if request.is_json:
+        return jsonify({'error': 'Resource not found'}), 404
+    flash('The requested page was not found.', 'error')
+    return render_template('index.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    app.logger.error(f'Server Error: {error}')
+    if request.is_json:
+        return jsonify({'error': 'An internal server error occurred'}), 500
+    flash('An unexpected error has occurred.', 'error')
+    return render_template('index.html'), 500
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    app.logger.error(f'Unhandled Exception: {str(e)}')
+    if request.is_json:
+        return jsonify({
+            'error': 'An unexpected error occurred',
+            'details': str(e) if app.debug else None
+        }), 500
+    flash('An unexpected error has occurred.', 'error')
+    return render_template('index.html'), 500
+
+# Configure file logging
+if not app.debug:
+    import logging.handlers
+    file_handler = logging.handlers.RotatingFileHandler(
+        'enivaran.log',
+        maxBytes=1024 * 1024,  # 1 MB
+        backupCount=10
+    )
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    file_handler.setLevel(logging.INFO)
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('eNivaran startup')
+
+# --- Database Configuration ---
+APP_DB = os.path.join(BASE_DIR, 'enivaran.db')
+
+def dict_factory(cursor, row):
+    """Convert SQLite Row to dictionary with proper datetime handling"""
+    d = {}
+    for idx, col in enumerate(cursor.description):
+        value = row[idx]
+        if isinstance(value, str) and col[0] in ['submitted_at', 'detected_at', 'created_at', 'last_updated']:
+            try:
+                # Try parsing with microseconds
+                value = datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S.%f')
+            except ValueError:
+                try:
+                    # Try parsing without microseconds
+                    value = datetime.datetime.strptime(value, '%Y-%m-%d %H:%M:%S')
+                except ValueError:
+                    value = datetime.datetime.now()
+        d[col[0]] = value
+    return d
 
 def get_coordinates_from_address(street, city, state, zipcode):
-    """
-    Uses geopy to get (latitude, longitude) from address fields.
-    Country is always set to India.
-    Returns (lat, lon) tuple or (None, None) if not found.
-    """
-    geolocator = Nominatim(user_agent="pothole-complaint-app")
+    geolocator = Nominatim(user_agent="eNivaran-app")
     address = f"{street}, {city}, {state}, {zipcode}, India"
     try:
         location = geolocator.geocode(address)
-        if location:
-            return location.latitude, location.longitude
-        else:
-            return None, None
+        return (location.latitude, location.longitude) if location else (None, None)
     except GeocoderServiceError:
         return None, None
 
-# --- Protected Routes ---
-# Decorator for login required
 from functools import wraps
 
 def login_required(f):
@@ -52,11 +218,6 @@ def login_required(f):
         if 'user_id' not in session:
             flash('Please log in to access this page.', 'error')
             return redirect(url_for('login'))
-        # Admins should generally use the admin dashboard, redirect them there from index/tools
-        if session.get('is_admin'):
-             # Allow admin access if needed, or redirect
-             # return redirect(url_for('admin_dashboard')) # Option to redirect admin away
-             pass # Currently allowing admin access to user pages too
         return f(*args, **kwargs)
     return decorated_function
 
@@ -70,51 +231,103 @@ def index():
 def tools():
     return render_template('tools.html')
 
-# --- Database Setups ---
+# --- Database Setup ---
+APP_DB = os.path.join(os.path.dirname(__file__), 'enivaran.db')
 
-# Pothole DB setup
-POTHOLE_DB = os.path.join(os.path.dirname(__file__), 'pothole_data.db')
-
-def init_pothole_db():
-    conn = sqlite3.connect(POTHOLE_DB)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS pothole_images (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            input_image BLOB,
-            input_filename TEXT,
-            detection_result TEXT,
-            annotated_image BLOB,
-            detected_at TIMESTAMP
-        )
-    ''')
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS pothole_stats (
-            id INTEGER PRIMARY KEY CHECK (id = 1),
-            total_potholes INTEGER,
-            high_priority_count INTEGER,
-            medium_priority_count INTEGER,
-            low_priority_count INTEGER,
-            last_updated TIMESTAMP
-        )
-    ''')
-    # Ensure a single row exists for stats
-    c.execute('SELECT COUNT(*) FROM pothole_stats')
-    if c.fetchone()[0] == 0:
+def init_database():
+    with sqlite3.connect(APP_DB) as conn:
+        conn.execute('PRAGMA foreign_keys = ON')  # Enable foreign key support
+        c = conn.cursor()
+        
+        # Create users table first (for foreign key relationships)
         c.execute('''
-            INSERT INTO pothole_stats (id, total_potholes, high_priority_count, medium_priority_count, low_priority_count, last_updated)
-            VALUES (1, 0, 0, 0, 0, ?)
-        ''', (datetime.datetime.now(),))
-    conn.commit()
-    conn.close()
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                full_name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+            
+        # Create complaints table with foreign key to users
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS complaints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT,
+                location_lat REAL,
+                location_lon REAL,
+                issue_type TEXT,
+                image BLOB,
+                image_filename TEXT,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_duplicate INTEGER DEFAULT 0,
+                original_report_id INTEGER,
+                user_id INTEGER,
+                status TEXT DEFAULT 'Submitted',
+                upvotes INTEGER DEFAULT 0,
+                remarks TEXT DEFAULT 'Complaint sent for supervision.',
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (original_report_id) REFERENCES complaints (id)
+            )''')
+            
+        # Create pothole detections table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS pothole_detections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                input_image BLOB,
+                input_filename TEXT,
+                detection_result TEXT,
+                annotated_image BLOB,
+                detected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                user_id INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )''')
+            
+        # Create pothole stats table
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS pothole_stats (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                total_potholes INTEGER DEFAULT 0,
+                high_priority_count INTEGER DEFAULT 0,
+                medium_priority_count INTEGER DEFAULT 0,
+                low_priority_count INTEGER DEFAULT 0,
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )''')
+            
+        # Initialize pothole stats if empty
+        if c.execute('SELECT COUNT(*) FROM pothole_stats').fetchone()[0] == 0:
+            c.execute('INSERT INTO pothole_stats (id) VALUES (1)')
+            
+        # Create indexes for better performance
+        c.execute('CREATE INDEX IF NOT EXISTS idx_complaints_user_id ON complaints(user_id)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_complaints_submitted_at ON complaints(submitted_at)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
+        
+        conn.commit()
 
-init_pothole_db()
+# --- Initialize Application ---
+def init_app():
+    # Initialize the database
+    init_database()
+    
+    # Create required directories
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    # Enable foreign key support for all connections
+    @app.before_request
+    def enable_foreign_keys():
+        if request.endpoint != 'static_files':  # Skip for static files
+            conn = sqlite3.connect(APP_DB)
+            conn.execute('PRAGMA foreign_keys = ON')
+            conn.close()
+
+# Initialize the application
+init_app()
+
 
 @app.route('/detect_pothole', methods=['POST'])
-# @login_required # Uncomment this line if pothole detection should require login
+@login_required
 def detect_pothole():
-    # if 'user_id' not in session: # Manual check if not using decorator
-    #     return jsonify({'error': 'Authentication required'}), 401
     if 'image' not in request.files:
         return jsonify({'error': 'No image uploaded'}), 400
     file = request.files['image']
@@ -125,702 +338,478 @@ def detect_pothole():
     file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
     file.save(file_path)
 
-    # Run pothole detection
     result_json, annotated_image_bytes = run_pothole_detection(file_path)
+    os.remove(file_path)
 
-    if result_json is None or annotated_image_bytes is None:
+    if result_json is None:
         return jsonify({'error': 'Detection failed'}), 500
 
-    # Store in pothole_images table
-    conn = sqlite3.connect(POTHOLE_DB)
-    c = conn.cursor()
-    c.execute('''
-        INSERT INTO pothole_images (input_image, input_filename, detection_result, annotated_image, detected_at)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (
-        file.read() if hasattr(file, 'stream') else open(file_path, 'rb').read(),
-        filename,
-        str(result_json),
-        annotated_image_bytes,
-        datetime.datetime.now()
-    ))
-
-    # Update stats
-    # Extract priority info from result_json
-    total = result_json.get('total_potholes', 0)
-    high = 0
-    medium = 0
-    low = 0
-    # Robustly count priorities
-    priorities = result_json.get('individual_priorities')
-    if (
-        isinstance(priorities, list)
-        and len(priorities) == total
-        and all(p in ('high', 'medium', 'low') for p in priorities)
-    ):
-        for p in priorities:
-            if p == 'high':
-                high += 1
-            elif p == 'medium':
-                medium += 1
-            elif p == 'low':
-                low += 1
-    elif 'road_priority' in result_json and total > 0:
-        # Fallback: if only road_priority is available, assign all to that priority
-        if result_json['road_priority'] == 'high':
-            high = total
-        elif result_json['road_priority'] == 'medium':
-            medium = total
-        elif result_json['road_priority'] == 'low':
-            low = total
-    # If priorities are missing or malformed, only update total, not priority counts
-
-    # Update stats row
-    c.execute('SELECT total_potholes, high_priority_count, medium_priority_count, low_priority_count FROM pothole_stats WHERE id=1')
-    stats = c.fetchone()
-    if stats:
-        new_total = stats[0] + total
-        new_high = stats[1] + high
-        new_medium = stats[2] + medium
-        new_low = stats[3] + low
-        c.execute('''
-            UPDATE pothole_stats
-            SET total_potholes=?, high_priority_count=?, medium_priority_count=?, low_priority_count=?, last_updated=?
-            WHERE id=1
-        ''', (new_total, new_high, new_medium, new_low, datetime.datetime.now()))
-    conn.commit()
-    conn.close()
-
-    # Encode annotated image as base64 for frontend display
     annotated_image_b64 = base64.b64encode(annotated_image_bytes).decode('utf-8')
+    return jsonify({'result': result_json, 'annotated_image_b64': annotated_image_b64})
 
-    # Clean up uploaded file
-    try:
-        os.remove(file_path)
-    except Exception:
-        pass
-
-    return jsonify({
-        'result': result_json,
-        'annotated_image_b64': annotated_image_b64
-    })
-
-import sqlite3
-import io
-import datetime
-from duplication_detection_code import get_duplicate_detector
-
-# Serve static files (CSS, JS)
 @app.route('/static/<path:filename>')
 def static_files(filename):
+    # Added to serve the illustration image
     return send_from_directory('static', filename)
 
-# Complaints DB setup
-COMPLAINTS_DB = os.path.join(os.path.dirname(__file__), 'complaints.db')
-
-def init_complaints_db():
-    conn = None
-    try:
-        conn = sqlite3.connect(COMPLAINTS_DB)
-        c = conn.cursor()
-
-        # Create table if it doesn't exist (keeping original columns)
-        c.execute('''
-            CREATE TABLE IF NOT EXISTS complaints (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                text TEXT,
-                location_lat REAL,
-                location_lon REAL,
-                issue_type TEXT,
-                image BLOB,
-                image_filename TEXT,
-                submitted_at TIMESTAMP,
-                is_duplicate INTEGER,
-                original_report_id INTEGER
-            )
-        ''')
-
-        # Check and add new columns if they don't exist
-        c.execute("PRAGMA table_info(complaints)")
-        columns = [column[1] for column in c.fetchall()]
-
-        if 'user_id' not in columns:
-            # Add user_id column (linking to users table)
-            # Note: Adding FK constraints via ALTER is tricky in SQLite,
-            # handle relationship logic in the application for now.
-            c.execute("ALTER TABLE complaints ADD COLUMN user_id INTEGER")
-            print("Added 'user_id' column to complaints table.")
-
-        if 'status' not in columns:
-            # Add status column with default value
-            c.execute("ALTER TABLE complaints ADD COLUMN status TEXT DEFAULT 'Submitted'")
-            print("Added 'status' column to complaints table.")
-
-        if 'upvotes' not in columns:
-            # Add upvotes column with default value
-            c.execute("ALTER TABLE complaints ADD COLUMN upvotes INTEGER DEFAULT 0")
-            print("Added 'upvotes' column to complaints table.")
-
-        if 'remarks' not in columns:
-            # Add remarks column with default value
-            c.execute("ALTER TABLE complaints ADD COLUMN remarks TEXT DEFAULT 'Complaint sent for supervision.'")
-            print("Added 'remarks' column to complaints table.")
-
-        conn.commit()
-        print("Complaints DB initialized/updated successfully.")
-
-    except sqlite3.Error as e:
-        print(f"Database error during complaints DB initialization: {e}")
-    finally:
-        if conn:
-            conn.close()
-
-init_complaints_db()
-
-# Users DB setup
-USERS_DB = os.path.join(os.path.dirname(__file__), 'users.db')
-
-def init_users_db():
-    conn = sqlite3.connect(USERS_DB)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            full_name TEXT NOT NULL,
-            password_hash TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_users_db()
-
 # --- Authentication Routes ---
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if 'user_id' in session:
+        return redirect(url_for('index'))
+    
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-
-        # Check for hardcoded admin credentials first
-        if username == 'admin001' and password == 'admin$001':
-            session['user_id'] = 'admin'
-            session['username'] = 'admin001'
-            session['is_admin'] = True
-            flash('Admin login successful!', 'success')
-            return redirect(url_for('admin_dashboard')) # Redirect admin to admin dashboard
-
-        # Check regular users in the database
-        conn = sqlite3.connect(USERS_DB)
-        conn.row_factory = sqlite3.Row # Return rows as dictionary-like objects
-        c = conn.cursor()
-        c.execute('SELECT * FROM users WHERE username = ?', (username,))
-        user = c.fetchone()
-        conn.close()
-
-        if user and check_password_hash(user['password_hash'], password):
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['is_admin'] = False
-            flash('Login successful!', 'success')
-            return redirect(url_for('index')) # Redirect regular users to index
+        login_type = request.form.get('loginType', 'user')
+        
+        if login_type == 'admin':
+            if username == 'admin001' and password == 'admin$001':
+                session['user_id'] = 'admin'
+                session['username'] = 'admin001'
+                session['is_admin'] = True
+                flash('Welcome back, Administrator!', 'success')
+                return redirect(url_for('admin_dashboard'))
+            else:
+                flash('Invalid admin credentials.', 'error')
+                return render_template('login.html')
         else:
-            flash('Invalid username or password.', 'error')
-            return redirect(url_for('login')) # Redirect back to login page on failure
-
-    # For GET request, just render the login page
-    # If already logged in, redirect away from login page
-    if 'user_id' in session:
-        if session.get('is_admin'):
-            return redirect(url_for('admin_dashboard'))
-        else:
-            return redirect(url_for('index'))
+            with sqlite3.connect(APP_DB) as conn:
+                conn.row_factory = dict_factory
+                user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+                
+            if user and check_password_hash(user['password_hash'], password):
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                session['is_admin'] = False
+                flash(f'Welcome back, {user["full_name"]}!', 'success')
+                return redirect(url_for('index'))
+            else:
+                flash('Invalid username or password.', 'error')
+    
     return render_template('login.html')
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+    if 'user_id' in session:
+        return redirect(url_for('index'))
     if request.method == 'POST':
         username = request.form['username']
         full_name = request.form['full_name']
         password = request.form['password']
-
-        if not username or not full_name or not password:
-             flash('All fields are required.', 'error')
-             return redirect(url_for('signup'))
-
-        conn = None  # Initialize connection variable
-        try:
-            conn = sqlite3.connect(USERS_DB)
-            c = conn.cursor()
-
-            # Check if username already exists
-            c.execute('SELECT id FROM users WHERE username = ?', (username,))
-            existing_user = c.fetchone()
-
-            if existing_user:
-                flash('Username already exists. Please choose another.', 'error')
-                # No need to close conn here, finally block will handle it
-                return redirect(url_for('signup'))
-
-            # Hash password and insert new user
-            password_hash = generate_password_hash(password)
-            c.execute('INSERT INTO users (username, full_name, password_hash) VALUES (?, ?, ?)',
-                      (username, full_name, password_hash))
-            conn.commit()
-
-            flash('Signup successful! Please log in.', 'success')
-            # No need to close conn here, finally block will handle it
-            return redirect(url_for('login'))
-
-        except sqlite3.Error as e:
-            # Log the specific error to the console for debugging
-            print(f"Database error during signup: {e}") # Using print for simplicity in dev environment
-            flash('A database error occurred during signup. Please try again.', 'error')
-            # Ensure redirect happens even if error occurs
+        if not all([username, full_name, password]):
+            flash('All fields are required.', 'error')
             return redirect(url_for('signup'))
-
-        finally:
-            # Ensure the connection is closed whether successful or not
-            if conn:
-                conn.close()
-
-    # For GET request, render signup page
-    # If already logged in, redirect away
-    if 'user_id' in session:
-        if session.get('is_admin'):
-            return redirect(url_for('admin_dashboard'))
-        else:
-            return redirect(url_for('index'))
+        with sqlite3.connect(APP_DB) as conn:
+            if conn.execute('SELECT id FROM users WHERE username = ?', (username,)).fetchone():
+                flash('Username already exists.', 'error')
+                return redirect(url_for('signup'))
+            password_hash = generate_password_hash(password)
+            conn.execute('INSERT INTO users (username, full_name, password_hash) VALUES (?, ?, ?)',
+                         (username, full_name, password_hash))
+            conn.commit()
+        flash('Signup successful! Please log in.', 'success')
+        return redirect(url_for('login'))
     return render_template('signup.html')
 
 @app.route('/logout')
 def logout():
-    session.pop('user_id', None)
-    session.pop('username', None)
-    session.pop('is_admin', None)
-    flash('You have been logged out.', 'success')
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+        
+    # Store username temporarily for the message
+    username = session.get('username', 'User')
+    is_admin = session.get('is_admin', False)
+    
+    # Clear all session data
+    session.clear()
+    
+    # Flash appropriate goodbye message
+    if is_admin:
+        flash('Administrator logged out successfully.', 'success')
+    else:
+        flash(f'Goodbye, {username}! You have been logged out successfully.', 'success')
+    
+    # Redirect to login page
     return redirect(url_for('login'))
 
-# --- Admin Dashboard Route ---
-
+# --- Admin Routes ---
 @app.route('/admin')
+@login_required
 def admin_dashboard():
-    # Protect this route - only admins allowed
     if not session.get('is_admin'):
-        flash('You do not have permission to access this page.', 'error')
-        return redirect(url_for('login'))
+        return redirect(url_for('index'))
+    with sqlite3.connect(APP_DB) as conn:
+        conn.row_factory = dict_factory
+        complaints_raw = conn.execute('''
+            SELECT 
+                c.id, 
+                c.text, 
+                CAST(c.location_lat AS FLOAT) as location_lat,
+                CAST(c.location_lon AS FLOAT) as location_lon,
+                c.issue_type,
+                c.image,
+                c.submitted_at,
+                c.status,
+                c.upvotes,
+                c.remarks,
+                c.is_duplicate,
+                c.original_report_id,
+                u.username,
+                u.full_name as reporter_name,
+                c.user_id
+            FROM complaints c
+            LEFT JOIN users u ON c.user_id = u.id
+            ORDER BY c.submitted_at DESC
+        ''').fetchall()
+        
+        # Process and validate each complaint
+        processed_complaints = []
+        for complaint in complaints_raw:
+            try:
+                # Create a clean dictionary with basic complaint info
+                comp_dict = {
+                    'id': int(complaint['id']),
+                    'text': str(complaint['text'] or ''),
+                    'location_lat': float(complaint['location_lat'] or 0),
+                    'location_lon': float(complaint['location_lon'] or 0),
+                    'issue_type': str(complaint['issue_type'] or ''),
+                    'status': str(complaint['status'] or 'Submitted'),
+                    'upvotes': int(complaint['upvotes'] or 0),
+                    'remarks': str(complaint['remarks'] or ''),
+                    'username': str(complaint['username'] or ''),
+                    'reporter_name': str(complaint['reporter_name'] or ''),
+                    'is_duplicate': bool(complaint.get('is_duplicate')),
+                    'original_report_id': int(complaint['original_report_id']) if complaint.get('original_report_id') else None,
+                    'user_id': int(complaint['user_id'])
+                }
 
-    conn = sqlite3.connect(COMPLAINTS_DB)
-    conn.row_factory = sqlite3.Row # Return rows as dictionary-like objects
-    c = conn.cursor()
-    # Fetch non-duplicate complaints, ordered by submission time, including new fields
-    c.execute('''
-        SELECT id, user_id, text, location_lat, location_lon, issue_type, submitted_at, status, upvotes, remarks, image
-        FROM complaints
-        WHERE is_duplicate = 0 OR is_duplicate IS NULL
-        ORDER BY submitted_at DESC
-    ''')
-    complaints = c.fetchall()
-    conn.close()
+                # Handle datetime
+                if isinstance(complaint['submitted_at'], str):
+                    try:
+                        submitted_at = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S.%f')
+                    except ValueError:
+                        try:
+                            submitted_at = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            submitted_at = datetime.datetime.now()
+                else:
+                    submitted_at = complaint['submitted_at'] or datetime.datetime.now()
 
-    # Convert timestamp strings to datetime objects if needed (or handle in template)
-    # Assuming they are stored as TIMESTAMP which sqlite3 might return as strings
-    processed_complaints = []
-    for complaint in complaints:
-        comp_dict = dict(complaint) # Convert row object to dict
-        # Attempt to parse timestamp if it's a string
-        if isinstance(comp_dict['submitted_at'], str):
-             try:
-                 # Adjust format string if necessary based on how it's stored
-                 comp_dict['submitted_at'] = datetime.datetime.strptime(comp_dict['submitted_at'], '%Y-%m-%d %H:%M:%S.%f')
-             except ValueError:
-                 # Handle cases where parsing might fail or format is different
-                 try:
-                     comp_dict['submitted_at'] = datetime.datetime.strptime(comp_dict['submitted_at'], '%Y-%m-%d %H:%M:%S')
-                 except ValueError:
-                     # Fallback if parsing fails
-                     pass # Keep original string or handle error
-        # Convert image blob to base64 string if it exists
-        if 'image' in comp_dict and comp_dict['image'] is not None:
-            comp_dict['image'] = "data:image/jpeg;base64," + base64.b64encode(comp_dict['image']).decode('utf-8')
-        processed_complaints.append(comp_dict)
+                comp_dict['submitted_at'] = submitted_at
 
+                # Handle image data
+                if complaint.get('image'):
+                    try:
+                        comp_dict['image'] = base64.b64encode(complaint['image']).decode('utf-8')
+                    except:
+                        comp_dict['image'] = None
+                else:
+                    comp_dict['image'] = None
 
-    # Pass datetime module to template context
-    return render_template('admin_dashboard.html', complaints=processed_complaints, datetime=datetime)
-
-# --- Admin Action Route ---
+                processed_complaints.append(comp_dict)
+            except Exception as e:
+                app.logger.error(f"Error processing complaint {complaint.get('id', 'unknown')}: {str(e)}")
+                continue
+        
+    return render_template('admin_dashboard.html', complaints=processed_complaints)
 
 @app.route('/update_complaint_status/<int:complaint_id>', methods=['POST'])
-@login_required # Ensure user is logged in
+@login_required
 def update_complaint_status(complaint_id):
-    # Ensure only admin can perform this action
     if not session.get('is_admin'):
-        flash('Unauthorized action.', 'error')
-        return redirect(url_for('login')) # Or redirect to index?
-
-    new_status = request.form.get('status')
-    new_remarks = request.form.get('remarks')
-
-    # Basic validation
-    allowed_statuses = ['Submitted', 'Approved', 'Rejected', 'On Hold']
-    if not new_status or new_status not in allowed_statuses:
-        flash('Invalid status selected.', 'error')
+        return redirect(url_for('index'))
+    status = request.form.get('status')
+    remarks = request.form.get('remarks')
+    if not status or not remarks:
+        flash('Status and remarks are required.', 'error')
         return redirect(url_for('admin_dashboard'))
-    if not new_remarks: # Remarks are required
-        flash('Remarks are required to update status.', 'error')
-        return redirect(url_for('admin_dashboard'))
-
-    conn = None
-    try:
-        conn = sqlite3.connect(COMPLAINTS_DB)
-        c = conn.cursor()
-        c.execute('''
-            UPDATE complaints
-            SET status = ?, remarks = ?
-            WHERE id = ?
-        ''', (new_status, new_remarks, complaint_id))
+    with sqlite3.connect(APP_DB) as conn:
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.execute('UPDATE complaints SET status = ?, remarks = ? WHERE id = ?', 
+                    (status, remarks, complaint_id))
         conn.commit()
-
-        if c.rowcount == 0:
-            flash(f'Complaint ID {complaint_id} not found.', 'error')
-        else:
-            flash(f'Complaint ID {complaint_id} status updated successfully.', 'success')
-
-    except sqlite3.Error as e:
-        print(f"Database error updating complaint status: {e}")
-        flash('A database error occurred while updating status.', 'error')
-    finally:
-        if conn:
-            conn.close()
-
+    flash('Complaint status updated successfully.', 'success')
     return redirect(url_for('admin_dashboard'))
 
-# --- Public Complaints View ---
-# In your Flask app setup
-# In your Flask app
-@app.template_test('isdatetime')
-def is_datetime(obj):
-    return isinstance(obj, datetime.datetime)
+# --- Public & User Complaint Routes ---
+@app.route('/pothole_stats')
+def pothole_stats():
+    """Return pothole statistics"""
+    with sqlite3.connect(APP_DB) as conn:
+        conn.row_factory = dict_factory
+        result = conn.execute('''
+            SELECT 
+                CAST(total_potholes AS INTEGER) as total_potholes,
+                CAST(high_priority_count AS INTEGER) as high_priority_count,
+                CAST(medium_priority_count AS INTEGER) as medium_priority_count,
+                CAST(low_priority_count AS INTEGER) as low_priority_count,
+                last_updated
+            FROM pothole_stats 
+            WHERE id = 1
+        ''').fetchone()
+
+        if result:
+            try:
+                processed = {
+                    'total_potholes': int(result['total_potholes'] or 0),
+                    'high_priority_count': int(result['high_priority_count'] or 0),
+                    'medium_priority_count': int(result['medium_priority_count'] or 0),
+                    'low_priority_count': int(result['low_priority_count'] or 0),
+                    'last_updated': result['last_updated'].isoformat() if result['last_updated'] else datetime.datetime.now().isoformat()
+                }
+                return jsonify(processed)
+            except Exception as e:
+                app.logger.error(f"Error processing pothole stats: {str(e)}")
+    
+    # Return default values if no stats or error
+    return jsonify({
+        'total_potholes': 0,
+        'high_priority_count': 0,
+        'medium_priority_count': 0,
+        'low_priority_count': 0,
+        'last_updated': datetime.datetime.now().isoformat()
+    })
+
 @app.route('/complaints')
 @login_required
 def view_complaints():
-    # Get query parameters for search, sort, filter (implement later)
-    search_id = request.args.get('search_id')
-    sort_by = request.args.get('sort', 'time_desc') # Default sort: newest first
-    # filter_status = request.args.get('filter_status')
-    # filter_location = request.args.get('filter_location')
-    # filter_time = request.args.get('filter_time')
-
-    conn = None
-    complaints = []
-    try:
-        conn = sqlite3.connect(COMPLAINTS_DB)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-
-        # Base query
-        query = '''
-            SELECT id, user_id, text, location_lat, location_lon, issue_type, submitted_at, status, upvotes, remarks, image
-            FROM complaints
-            WHERE (is_duplicate = 0 OR is_duplicate IS NULL)
-        '''
-        params = []
-
-        # TODO: Add filtering logic based on query parameters
-        if search_id:
-            query += " AND id = ?"
+    sort_by = request.args.get('sort', 'time_desc')
+    order_clause = "ORDER BY submitted_at DESC"
+    if sort_by == 'upvotes_desc':
+        order_clause = "ORDER BY upvotes DESC, submitted_at DESC"
+    elif sort_by == 'time_asc':
+        order_clause = "ORDER BY submitted_at ASC"
+    
+    with sqlite3.connect(APP_DB) as conn:
+        conn.row_factory = dict_factory
+        complaints_raw = conn.execute(f'''
+            SELECT 
+                c.id, 
+                c.text, 
+                CAST(c.location_lat AS FLOAT) as location_lat,
+                CAST(c.location_lon AS FLOAT) as location_lon,
+                c.issue_type,
+                c.image,
+                c.submitted_at,
+                c.status,
+                c.upvotes,
+                c.remarks,
+                c.is_duplicate,
+                c.original_report_id,
+                u.username 
+            FROM complaints c
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.is_duplicate = 0 OR c.is_duplicate IS NULL
+            {order_clause}
+        ''').fetchall()
+        
+        # Process and validate each complaint
+        processed_complaints = []
+        for complaint in complaints_raw:
             try:
-                params.append(int(search_id))
-            except ValueError:
-                flash('Invalid Complaint ID for search.', 'error')
-                # Handle invalid ID search - maybe show all or show none? Show all for now.
-                query = query.replace(" AND id = ?", "") # Remove the condition
+                # Create a clean dictionary with basic complaint info
+                comp_dict = {
+                    'id': int(complaint['id']),
+                    'text': str(complaint['text'] or ''),
+                    'location_lat': float(complaint['location_lat'] or 0),
+                    'location_lon': float(complaint['location_lon'] or 0),
+                    'issue_type': str(complaint['issue_type'] or ''),
+                    'status': str(complaint['status'] or 'Submitted'),
+                    'upvotes': int(complaint['upvotes'] or 0),
+                    'remarks': str(complaint['remarks'] or ''),
+                    'username': str(complaint['username'] or ''),
+                    'is_duplicate': bool(complaint.get('is_duplicate')),
+                    'original_report_id': int(complaint['original_report_id']) if complaint.get('original_report_id') else None
+                }
 
-        # TODO: Add sorting logic
-        if sort_by == 'upvotes_desc':
-            query += " ORDER BY upvotes DESC, submitted_at DESC"
-        elif sort_by == 'time_asc':
-             query += " ORDER BY submitted_at ASC"
-        else: # Default: time_desc
-            query += " ORDER BY submitted_at DESC"
+                # Handle datetime
+                if isinstance(complaint['submitted_at'], str):
+                    try:
+                        submitted_at = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S.%f')
+                    except ValueError:
+                        try:
+                            submitted_at = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            submitted_at = datetime.datetime.now()
+                else:
+                    submitted_at = complaint['submitted_at'] or datetime.datetime.now()
 
+                comp_dict['submitted_at'] = submitted_at
 
-        c.execute(query, params)
-        raw_complaints = c.fetchall()
+                # Handle image data
+                if complaint.get('image'):
+                    try:
+                        comp_dict['image'] = base64.b64encode(complaint['image']).decode('utf-8')
+                    except:
+                        comp_dict['image'] = None
+                else:
+                    comp_dict['image'] = None
 
-        # Process timestamps like in admin view
-        for complaint in raw_complaints:
-            comp_dict = dict(complaint)
-            if isinstance(comp_dict['submitted_at'], str):
-                 try:
-                     comp_dict['submitted_at'] = datetime.datetime.strptime(comp_dict['submitted_at'], '%Y-%m-%d %H:%M:%S.%f')
-                 except ValueError:
-                     try:
-                         comp_dict['submitted_at'] = datetime.datetime.strptime(comp_dict['submitted_at'], '%Y-%m-%d %H:%M:%S')
-                     except ValueError:
-                         pass
-            # Convert image blob to base64 string if it exists
-            if 'image' in comp_dict and comp_dict['image'] is not None:
-                comp_dict['image'] = "data:image/jpeg;base64," + base64.b64encode(comp_dict['image']).decode('utf-8')
-            complaints.append(comp_dict)
-
-
-    except sqlite3.Error as e:
-        print(f"Database error fetching complaints: {e}")
-        flash('Could not retrieve complaints due to a database error.', 'error')
-    finally:
-        if conn:
-            conn.close()
-
-    # Pass sorting/filtering parameters and datetime module back to template
-    return render_template('complaints.html', complaints=complaints, sort_by=sort_by, search_id=search_id, datetime=datetime)
+                processed_complaints.append(comp_dict)
+            except Exception as e:
+                app.logger.error(f"Error processing complaint {complaint.get('id', 'unknown')}: {str(e)}")
+                continue
+    
+    return render_template('complaints.html', complaints=processed_complaints, sort_by=sort_by)
 
 @app.route('/upvote_complaint/<int:complaint_id>', methods=['POST'])
 @login_required
 def upvote_complaint(complaint_id):
-    # Admin cannot upvote
     if session.get('is_admin'):
-        return jsonify({'error': 'Admin users cannot upvote complaints.'}), 403
-
-    conn = None
-    try:
-        conn = sqlite3.connect(COMPLAINTS_DB)
-        c = conn.cursor()
-
-        # Increment the upvote count
-        # Using COALESCE to handle potential NULL values if the default wasn't set properly
-        c.execute('''
-            UPDATE complaints
-            SET upvotes = COALESCE(upvotes, 0) + 1
-            WHERE id = ? AND (is_duplicate = 0 OR is_duplicate IS NULL)
-        ''', (complaint_id,))
-
-        # Check if the update was successful and get the new count
-        if c.rowcount > 0:
-            c.execute('SELECT upvotes FROM complaints WHERE id = ?', (complaint_id,))
-            result = c.fetchone()
-            new_count = result[0] if result else 0
-            conn.commit() # Commit only if update was successful
+        return jsonify({'error': 'Admins cannot upvote.'}), 403
+    with sqlite3.connect(APP_DB) as conn:
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.row_factory = dict_factory
+        # Update upvote count
+        conn.execute('UPDATE complaints SET upvotes = upvotes + 1 WHERE id = ?', (complaint_id,))
+        conn.commit()
+        
+        # Get updated count
+        result = conn.execute('SELECT upvotes FROM complaints WHERE id = ?', (complaint_id,)).fetchone()
+        if result:
+            new_count = result['upvotes']
             return jsonify({'success': True, 'new_count': new_count})
-        else:
-            # Complaint not found or was a duplicate
-            conn.rollback() # Rollback if no rows affected
-            return jsonify({'error': 'Complaint not found or cannot be upvoted.'}), 404
+    return jsonify({'error': 'Complaint not found.'}), 404
 
-    except sqlite3.Error as e:
-        print(f"Database error during upvote: {e}")
-        if conn:
-            conn.rollback() # Rollback on error
-        return jsonify({'error': 'A database error occurred.'}), 500
-    finally:
-        if conn:
-            conn.close()
-
-# --- User's Complaints View ---
-
+# --- NEW: My Complaints Route ---
 @app.route('/my_complaints')
 @login_required
 def my_complaints():
-    user_id = session['user_id']
-    # Admins don't have "my complaints"
     if session.get('is_admin'):
-        flash("Admin users view all complaints via the admin dashboard.", "info")
+        flash("Admin users can view all complaints via the admin dashboard.", "info")
         return redirect(url_for('admin_dashboard'))
-
-    conn = None
-    complaints = []
-    try:
-        conn = sqlite3.connect(COMPLAINTS_DB)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-
-        # Fetch complaints submitted by the current user
-        c.execute('''
-            SELECT id, text, location_lat, location_lon, issue_type, submitted_at, status, upvotes, remarks, image, is_duplicate, original_report_id
-            FROM complaints
-            WHERE user_id = ?
-            ORDER BY submitted_at DESC
-        ''', (user_id,))
-        raw_complaints = c.fetchall()
-
-        # Process timestamps
-        for complaint in raw_complaints:
-            comp_dict = dict(complaint)
-            if isinstance(comp_dict['submitted_at'], str):
-                 try:
-                     comp_dict['submitted_at'] = datetime.datetime.strptime(comp_dict['submitted_at'], '%Y-%m-%d %H:%M:%S.%f')
-                 except ValueError:
-                     try:
-                         comp_dict['submitted_at'] = datetime.datetime.strptime(comp_dict['submitted_at'], '%Y-%m-%d %H:%M:%S')
-                     except ValueError:
-                         pass
-            # Convert image blob to base64 string if it exists
-            if 'image' in comp_dict and comp_dict['image'] is not None:
-                comp_dict['image'] = "data:image/jpeg;base64," + base64.b64encode(comp_dict['image']).decode('utf-8')
-            complaints.append(comp_dict)
-
-    except sqlite3.Error as e:
-        print(f"Database error fetching user complaints: {e}")
-        flash('Could not retrieve your complaints due to a database error.', 'error')
-    finally:
-        if conn:
-            conn.close()
-
-    # Pass datetime module to template context
-    return render_template('my_complaints.html', complaints=complaints, datetime=datetime)
-
-
-# --- Complaint and Pothole Routes ---
-
-@app.route('/top_complaints', methods=['GET'])
-def get_top_complaints():
-    conn = None
-    try:
-        conn = sqlite3.connect(COMPLAINTS_DB)
-        conn.row_factory = sqlite3.Row
-        c = conn.cursor()
-        
-        # Get top 3 non-duplicate complaints by upvotes
-        query = '''
-            SELECT id, text, location_lat, location_lon, issue_type, submitted_at, status, upvotes
-            FROM complaints
-            WHERE (is_duplicate = 0 OR is_duplicate IS NULL)
-            ORDER BY upvotes DESC, submitted_at DESC
-            LIMIT 3
-        '''
-        c.execute(query)
-        complaints = [dict(row) for row in c.fetchall()]
-        
-        # Convert datetime objects to string format and image to base64
-        for complaint in complaints:
-            if isinstance(complaint['submitted_at'], str):
-                try:
-                    dt = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S.%f')
-                    complaint['submitted_at'] = dt.strftime('%Y-%m-%d')
-                except ValueError:
-                    try:
-                        dt = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S')
-                        complaint['submitted_at'] = dt.strftime('%Y-%m-%d')
-                    except ValueError:
-                        pass
-            
-            # Convert image blob to base64 if it exists
-            if 'image' in complaint and complaint['image'] is not None:
-                complaint['image'] = "data:image/jpeg;base64," + base64.b64encode(complaint['image']).decode('utf-8')
-        
-        return jsonify(complaints)
-    except sqlite3.Error as e:
-        print(f"Database error fetching top complaints: {e}")
-        return jsonify([])
-    finally:
-        if conn:
-            conn.close()
-
-@app.route('/raise_complaint', methods=['POST'])
-@login_required # Now require login to raise a complaint
-def raise_complaint():
-    # user_id is guaranteed to be in session due to @login_required
+    
     user_id = session['user_id']
-    # Admin cannot raise complaints
+    with sqlite3.connect(APP_DB) as conn:
+        conn.row_factory = dict_factory
+        complaints_raw = conn.execute('''
+            SELECT 
+                c.id, 
+                c.text, 
+                c.issue_type,
+                c.image,
+                c.submitted_at,
+                c.status,
+                c.upvotes,
+                c.remarks,
+                c.is_duplicate,
+                c.original_report_id,
+                u.username 
+            FROM complaints c
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.user_id = ? 
+            ORDER BY c.submitted_at DESC
+        ''', (user_id,)).fetchall()
+        
+        # Process and validate each complaint
+        processed_complaints = []
+        for complaint in complaints_raw:
+            try:
+                # Create a clean dictionary with basic complaint info
+                comp_dict = {
+                    'id': int(complaint['id']),
+                    'text': str(complaint['text'] or ''),
+                    'issue_type': str(complaint['issue_type'] or ''),
+                    'status': str(complaint['status'] or 'Submitted'),
+                    'upvotes': int(complaint['upvotes'] or 0),
+                    'remarks': str(complaint['remarks'] or ''),
+                    'username': str(complaint['username'] or ''),
+                    'is_duplicate': bool(complaint['is_duplicate']),
+                    'original_report_id': int(complaint['original_report_id']) if complaint['original_report_id'] else None
+                }
+
+                # Handle image data
+                if complaint.get('image'):
+                    try:
+                        comp_dict['image'] = base64.b64encode(complaint['image']).decode('utf-8')
+                    except:
+                        comp_dict['image'] = None
+                else:
+                    comp_dict['image'] = None
+
+                # Handle datetime
+                if isinstance(complaint['submitted_at'], str):
+                    try:
+                        submitted_at = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S.%f')
+                    except ValueError:
+                        try:
+                            submitted_at = datetime.datetime.strptime(complaint['submitted_at'], '%Y-%m-%d %H:%M:%S')
+                        except ValueError:
+                            submitted_at = datetime.datetime.now()
+                else:
+                    submitted_at = complaint['submitted_at'] or datetime.datetime.now()
+
+                comp_dict['submitted_at'] = submitted_at
+                processed_complaints.append(comp_dict)
+            except Exception as e:
+                app.logger.error(f"Error processing complaint {complaint.get('id', 'unknown')}: {str(e)}")
+                continue
+        
+    return render_template('my_complaints.html', 
+                         complaints=processed_complaints, 
+                         now=datetime.datetime.now())
+
+# --- Complaint Submission ---
+@app.route('/raise_complaint', methods=['POST'])
+@login_required
+def raise_complaint():
+    user_id = session['user_id']
     if session.get('is_admin'):
          return jsonify({'error': 'Admin users cannot raise complaints.'}), 403
 
-    # Get form fields
-    text = request.form.get('text')
-    issue_type = request.form.get('issue_type')
-    street = request.form.get('street')
-    city = request.form.get('city')
-    state = request.form.get('state')
-    zipcode = request.form.get('zipcode')
-    image_file = request.files.get('image')
+    form = request.form
+    if not all([form.get(k) for k in ['text', 'issue_type', 'street', 'city', 'state', 'zipcode']]) or 'image' not in request.files:
+        return jsonify({'error': 'All fields and an image are required.'}), 400
 
-    if not all([text, issue_type, street, city, state, zipcode, image_file]):
-        return jsonify({'error': 'All fields are required.'}), 400
+    lat, lon = get_coordinates_from_address(form['street'], form['city'], form['state'], form['zipcode'])
+    if not lat:
+        return jsonify({'error': 'Could not find coordinates for the address.'}), 400
 
-    # Get coordinates from address
-    lat, lon = get_coordinates_from_address(street, city, state, zipcode)
-    if lat is None or lon is None:
-        return jsonify({'error': 'Could not geocode the provided address.'}), 400
+    image_bytes = request.files['image'].read()
+    
+    # Placeholder for duplication logic
+    is_duplicate, original_id = False, None
+    # Here you would call your duplication detection logic
+    # is_duplicate, original_id, confidence = detector.find_duplicates(...)
 
-    # Read image bytes
-    image_bytes = image_file.read()
-    image_filename = secure_filename(image_file.filename)
-
-    # Prepare report dict for duplication detection
-    report = {
-        'text': text,
-        'location': (lat, lon),
-        'issue_type': issue_type,
-        'image_bytes': image_bytes
-    }
-
-    # Load all existing complaints for duplication detection
-    conn = sqlite3.connect(COMPLAINTS_DB)
-    c = conn.cursor()
-    c.execute('SELECT id, text, location_lat, location_lon, issue_type, image FROM complaints WHERE is_duplicate=0')
-    rows = c.fetchall()
-    detector = get_duplicate_detector()
-    for row in rows:
-        db_report = {
-            'id': row[0],
-            'text': row[1],
-            'location': (row[2], row[3]),
-            'issue_type': row[4],
-            'image_bytes': row[5]
-        }
-        detector.add_report(db_report)
-
-    # Check for duplicates
-    is_duplicate, similar_reports, confidence = detector.find_duplicates(report)
-
-    # Prepare data for insertion (including user_id)
-    complaint_data = (
-        text, lat, lon, issue_type, image_bytes, image_filename,
-        datetime.datetime.now(), user_id # Add user_id here
-    )
-
-    if is_duplicate:
-        original_id = similar_reports[0] if similar_reports else None
-        # Store as duplicate for record-keeping, including user_id
-        # Note: Defaults for status, upvotes, remarks are handled by DB schema
-        c.execute('''
-            INSERT INTO complaints (text, location_lat, location_lon, issue_type, image, image_filename, submitted_at, user_id, is_duplicate, original_report_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', complaint_data + (1, original_id)) # Add is_duplicate and original_id
+    with sqlite3.connect(APP_DB) as conn:
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.execute('''
+            INSERT INTO complaints (
+                text, location_lat, location_lon, issue_type,
+                image, image_filename, user_id,
+                is_duplicate, original_report_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            form['text'], lat, lon, form['issue_type'],
+            image_bytes, secure_filename(request.files['image'].filename),
+            user_id, is_duplicate, original_id
+        ))
         conn.commit()
-        conn.close()
-        return jsonify({'message': f'Duplicate complaint detected. Similar to complaint ID {original_id}.'}), 200
 
-    # Not duplicate, store as new complaint, including user_id
-    # Note: Defaults for status, upvotes, remarks are handled by DB schema
-    c.execute('''
-        INSERT INTO complaints (text, location_lat, location_lon, issue_type, image, image_filename, submitted_at, user_id, is_duplicate, original_report_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''', complaint_data + (0, None)) # Add is_duplicate (0) and original_id (None)
-    conn.commit()
-    conn.close()
     return jsonify({'message': 'Complaint registered successfully.'}), 200
 
-@app.route('/pothole_stats', methods=['GET'])
-def pothole_stats():
-    conn = sqlite3.connect(POTHOLE_DB)
-    c = conn.cursor()
-    c.execute('SELECT total_potholes, high_priority_count, medium_priority_count, low_priority_count, last_updated FROM pothole_stats WHERE id=1')
-    row = c.fetchone()
-    conn.close()
-    if row:
-        return jsonify({
-            'total_potholes': row[0],
-            'high_priority_count': row[1],
-            'medium_priority_count': row[2],
-            'low_priority_count': row[3],
-            'last_updated': row[4]
-        })
-    else:
-        return jsonify({'error': 'Stats not found'}), 404
+
+# Debug utility routes
+@app.route('/debug/reset_complaints', methods=['POST'])
+def debug_reset_complaints():
+    """Debug route to reset all complaints. Only works in debug mode."""
+    if not app.debug:
+        return jsonify({'error': 'This route is only available in debug mode'}), 403
+    
+    try:
+        with sqlite3.connect(APP_DB) as conn:
+            conn.execute('PRAGMA foreign_keys = OFF')  # Temporarily disable foreign keys
+            conn.execute('DELETE FROM complaints')  # Clear all complaints
+            conn.execute('DELETE FROM sqlite_sequence WHERE name="complaints"')  # Reset auto-increment
+            conn.execute('UPDATE pothole_stats SET total_potholes = 0, high_priority_count = 0, medium_priority_count = 0, low_priority_count = 0')  # Reset stats
+            conn.commit()
+            flash('All complaints have been cleared successfully.', 'success')
+            return jsonify({'message': 'All complaints cleared successfully'}), 200
+    except Exception as e:
+        app.logger.error(f'Error resetting complaints: {str(e)}')
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
