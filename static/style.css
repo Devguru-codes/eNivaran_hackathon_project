@@ -301,6 +301,44 @@ body {
 }
 
 /* Form Styles */
+/* Autocomplete Styles */
+.autocomplete-container {
+    position: relative;
+    width: 100%;
+}
+
+.autocomplete-items {
+    position: absolute;
+    border: 1px solid #ddd;
+    border-radius: 0 0 10px 10px;
+    z-index: 99;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background-color: white;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    max-height: 250px;
+    overflow-y: auto;
+    display: none;
+}
+
+.autocomplete-items div {
+    padding: 12px 15px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.autocomplete-items div:hover,
+.autocomplete-items div.active {
+    background-color: var(--primary);
+    color: white;
+}
+
+.autocomplete-items div:not(:last-child) {
+    border-bottom: 1px solid #eee;
+}
+
+/* Regular Form Styles */
 .form-label {
     font-weight: 600;
     color: #444;
