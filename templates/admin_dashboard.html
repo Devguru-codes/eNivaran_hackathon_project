@@ -218,6 +218,41 @@
                             </div>
                         </div>
 
+                        {/* Debug Reset Section */}
+                        {(window.location.hostname === 'localhost' || 
+                          window.location.hostname === '127.0.0.1' || 
+                          window.location.hostname === '') && (
+                            <div className="mb-4" data-aos="fade-up">
+                                <div className="alert alert-warning">
+                                    <h5><i className="bi bi-exclamation-triangle me-2"></i>Debug Mode Actions</h5>
+                                    <p className="mb-3">These actions are only available in development mode.</p>
+                                    <button 
+                                        className="btn btn-danger"
+                                        onClick={() => {
+                                            if (window.confirm('WARNING: This will permanently delete all complaints. Are you sure?')) {
+                                                fetch('/debug/reset_complaints', {
+                                                    method: 'POST'
+                                                })
+                                                .then(response => response.json())
+                                                .then(data => {
+                                                    if (data.error) {
+                                                        throw new Error(data.error);
+                                                    }
+                                                    window.location.reload();
+                                                })
+                                                .catch(error => {
+                                                    alert('Error: ' + error.message);
+                                                });
+                                            }
+                                        }}
+                                    >
+                                        <i className="bi bi-trash me-2"></i>
+                                        Reset All Complaints
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Main Complaints Table */}
                         <div className="card shadow-sm border-0" data-aos="fade-up">
                             <div className="card-body p-4">
