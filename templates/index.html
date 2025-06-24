@@ -205,7 +205,7 @@
                         <div className="container">
                             <a className="navbar-brand" href="#">
                                 <i className="bi bi-cone-striped me-2"></i>
-                                PotholeAI
+                                eNivaran
                             </a>
                             <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                                 <span className="navbar-toggler-icon"></span>
@@ -222,7 +222,19 @@
                                         <a className="nav-link" href="#" onClick={(e) => { e.preventDefault(); scrollToSection('how-it-works'); }}>How It Works</a>
                                     </li>
                                     <li className="nav-item">
-                                        <a className="nav-link" href="#" onClick={(e) => { e.preventDefault(); scrollToSection('tools-section'); }}>Tools</a>
+                                        <a className="nav-link" href="/tools"><i className="bi bi-tools me-1"></i>Tools</a>
+                                    </li>
+                                    <li className="nav-item">
+                                        <a className="nav-link d-flex align-items-center gap-2" href="/my_complaints">
+                                            <i className="bi bi-list-check"></i>
+                                            My Complaints
+                                            <span className="badge bg-primary rounded-pill">View Status</span>
+                                        </a>
+                                    </li>
+                                    <li className="nav-item">
+                                        <a className="nav-link text-danger" href="/logout">
+                                            <i className="bi bi-box-arrow-right me-1"></i>Logout
+                                        </a>
                                     </li>
                                 </ul>
                             </div>
@@ -255,7 +267,7 @@
                                 </div>
                                 <div className="col-lg-6 text-center mt-5 mt-lg-0" data-aos="fade-left">
                                     {/* Placeholder image - replace with your actual image URL */}
-                                    <img src="https://via.placeholder.com/500x350/ffffff/6e8efb?text=Pothole+AI+Visual" alt="Pothole Detection Illustration" className="pothole-illustration img-fluid shadow-lg" />
+                                    <img src="static\narendra-modi-india-flag-.webp" alt="Pothole Detection Illustration" className="pothole-illustration img-fluid shadow-lg" />
                                 </div>
                             </div>
                         </div>
@@ -385,35 +397,7 @@
                             </div>
                         </div>
 
-                        {/* Stats Card - Updated to use React state */}
-                        <div className="row mb-5" data-aos="fade-up">
-                            <div className="col-lg-10 col-xl-8 mx-auto">
-                                <div className="stats-card">
-                                    <div className="card-body p-4">
-                                        <h4 className="card-title mb-4 text-center"><i className="bi bi-bar-chart-fill me-2"></i>Pothole Detection Stats</h4>
-                                        <div className="row text-center">
-                                            <div className="col-6 col-md-3 mb-3 mb-md-0">
-                                                <span className="stat-label text-uppercase small">Total</span>
-                                                <div className="stat-value">{stats.total_potholes}</div>
-                                            </div>
-                                            <div className="col-6 col-md-3 mb-3 mb-md-0">
-                                                <span className="stat-label text-danger"><i className="bi bi-exclamation-triangle-fill me-1"></i> High</span>
-                                                <div className="stat-value badge bg-danger rounded-pill px-3 py-1 fs-6">{stats.high_priority_count}</div>
-                                            </div>
-                                            <div className="col-6 col-md-3 mb-3 mb-md-0">
-                                                <span className="stat-label text-warning"><i className="bi bi-exclamation-circle-fill me-1"></i> Medium</span>
-                                                <div className="stat-value badge bg-warning text-dark rounded-pill px-3 py-1 fs-6">{stats.medium_priority_count}</div>
-                                            </div>
-                                            <div className="col-6 col-md-3">
-                                                <span className="stat-label text-success"><i className="bi bi-check-circle-fill me-1"></i> Low</span>
-                                                <div className="stat-value badge bg-success rounded-pill px-3 py-1 fs-6">{stats.low_priority_count}</div>
-                                            </div>
-                                        </div>
-                                        <div className="text-center text-muted mt-3"><small>Last Updated: <span>{stats.last_updated}</span></small></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+            
 
                         {/* Pothole Detection Form - Updated */}
                         {activeTab === 'detection' && (
@@ -631,7 +615,7 @@
                                 <div className="col-lg-4 col-md-6 mb-4 mb-lg-0">
                                     <div className="footer-brand d-flex align-items-center mb-3">
                                         <i className="bi bi-cone-striped me-2"></i>
-                                        PotholeAI
+                                        eNivaran
                                     </div>
                                     <p className="footer-text">
                                         AI-powered road safety and civic issue reporting for smarter cities.
@@ -673,7 +657,7 @@
                                     <div className="footer-links">
                                         <h5>Contact</h5>
                                         <ul className="list-unstyled">
-                                            <li className="mb-2"><a href="mailto:info@potholeai.com"><i className="bi bi-envelope me-2"></i>info@potholeai.com</a></li>
+                                            <li className="mb-2"><a href="mailto:info@enivaran.com"><i className="bi bi-envelope me-2"></i>info@enivaran.com</a></li>
                                             <li className="mb-2"><a href="tel:+15551234567"><i className="bi bi-telephone me-2"></i>(555) 123-4567</a></li>
                                             <li><a href="#"><i className="bi bi-geo-alt me-2"></i>123 Tech Lane, Smart City</a></li>
                                         </ul>
@@ -683,7 +667,7 @@
 
                             <div className="copyright mt-5">
                                 <small>
-                                    <i className="bi bi-c-circle me-1"></i> {new Date().getFullYear()} PotholeAI | Built with React, Bootstrap, Flask & AI
+                                    <i className="bi bi-c-circle me-1"></i> {new Date().getFullYear()} eNivaran | Built with React, Bootstrap, Flask & AI
                                 </small>
                             </div>
                         </div>
