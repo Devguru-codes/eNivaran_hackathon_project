@@ -4,288 +4,159 @@
     <meta charset="UTF-8">
     <title>My Complaints - eNivaran</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
-    <!-- React and ReactDOM -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.21.2/babel.min.js"></script>
-    <!-- AOS Animation Library -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
-    <!-- Custom CSS -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" rel="stylesheet">
 </head>
 <body>
-    <div id="app-root"></div>
+    <nav class="navbar navbar-expand-lg navbar-light sticky-top bg-light shadow-sm">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-person-check me-2" style="color: #6f42c1;"></i> eNivaran
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/complaints">Complaints</a></li>
+                    <li class="nav-item"><a class="nav-link active" href="/my_complaints">My Complaints</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/tools">Tools</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
 
-    <div id="server-data" 
-        data-complaints='{{ complaints | tojson | safe if complaints else "[]" }}'
-        data-is-admin='{{ "true" if session.get("is_admin") else "false" }}'
-        data-messages='{{ get_flashed_messages(with_categories=true) | tojson | safe }}'
-        style="display: none;">
+    <div class="container py-5">
+        <div class="card shadow-sm border-0" data-aos="fade-up">
+            <div class="card-body p-4 p-md-5">
+                <h2 class="card-title mb-4">
+                    <i class="bi bi-person-lines-fill me-2"></i>My Submitted Complaints
+                </h2>
+                
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }}">{{ message }}</div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                {% if complaints %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Details & Image</th>
+                                <th>Date Submitted</th>
+                                <th>Status</th>
+                                <th>Admin Remarks</th>
+                                <th>Upvotes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for complaint in complaints if complaint %}
+                            <tr data-aos="fade-up" data-aos-delay="{{ loop.index * 50 }}">
+                                <td>
+                                    <strong>#{{ complaint.id }}</strong>
+                                    {% if complaint.is_duplicate %}
+                                        <div class="small text-danger mt-1" title="This complaint was marked as a duplicate.">
+                                            <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                                            Duplicate of #{{ complaint.original_report_id }}
+                                        </div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <p class="small mb-1">{{ complaint.text }}</p>
+                                    {% if complaint.image %}
+                                        <img src="data:image/jpeg;base64,{{ complaint.image }}" 
+                                             class="img-thumbnail" 
+                                             style="max-width: 100px; cursor: pointer;" 
+                                             data-bs-toggle="modal" 
+                                             data-bs-target="#imageModal{{ complaint.id }}" 
+                                             alt="Complaint evidence">
+                                    {% endif %}
+                                </td>
+                                <td class="small text-nowrap">
+                                    {% if complaint.submitted_at %}
+                                        {{ complaint.submitted_at.strftime('%b %d, %Y, %I:%M %p') }}
+                                    {% else %}
+                                        <span class="text-muted">Date not available</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set status_class = {
+                                        'Submitted': 'warning text-dark',
+                                        'Approved': 'success',
+                                        'Rejected': 'danger',
+                                        'On Hold': 'info text-dark'
+                                    } %}
+                                    <span class="badge bg-{{ status_class.get(complaint.status, 'secondary') }}">
+                                        {{ complaint.status }}
+                                    </span>
+                                </td>
+                                <td class="small"><em>{{ complaint.remarks }}</em></td>
+                                <td class="small text-center fw-bold">
+                                    <i class="bi bi-hand-thumbs-up text-primary me-1"></i>
+                                    {{ complaint.upvotes }}
+                                </td>
+                            </tr>
+
+                            <!-- Image Modal -->
+                            <div class="modal fade" id="imageModal{{ complaint.id }}" tabindex="-1">
+                                <div class="modal-dialog modal-lg modal-dialog-centered">
+                                    <div class="modal-content">
+                                        <div class="modal-header">
+                                            <h5 class="modal-title">Complaint #{{ complaint.id }}</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                        </div>
+                                        <div class="modal-body text-center">
+                                            {% if complaint.image %}
+                                                <img src="data:image/jpeg;base64,{{ complaint.image }}" 
+                                                     class="img-fluid" 
+                                                     alt="Full size complaint evidence">
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                    <div class="text-center text-muted p-5">
+                        <i class="bi bi-inbox display-1 mb-3 d-block"></i>
+                        <h4>You haven't submitted any complaints yet.</h4>
+                        <p class="mt-3">
+                            <a href="/tools" class="btn btn-primary">
+                                <i class="bi bi-plus-lg me-1"></i>Submit a New Complaint
+                            </a>
+                        </p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
     </div>
 
-    <script type="text/javascript">
-        const serverDataEl = document.getElementById('server-data');
-        window.SERVER_DATA = {
-            complaints: JSON.parse(serverDataEl.dataset.complaints),
-            isAdmin: JSON.parse(serverDataEl.dataset.isAdmin),
-            messages: JSON.parse(serverDataEl.dataset.messages)
-        };
-    </script>
+    <footer class="py-5 mt-5 bg-dark">
+        <div class="container text-center text-white">
+            <p class="mb-0"><small>© {{ now.year }} eNivaran. All Rights Reserved.</small></p>
+        </div>
+    </footer>
 
-    {% raw %}
-    <script type="text/babel">
-        // Main App Component for My Complaints Page
-        const MyComplaintsApp = () => {
-            const navbarRef = React.useRef(null);
-            const [complaints] = React.useState(window.SERVER_DATA.complaints);
-            const [isAdmin] = React.useState(window.SERVER_DATA.isAdmin);
-            const [messages] = React.useState(window.SERVER_DATA.messages);
-
-            // --- Effects ---
-            React.useEffect(() => {
-                // Initialize AOS animations
-                AOS.init({
-                    duration: 800,
-                    once: true,
-                    offset: 50
-                });
-
-                // Navbar scroll effect
-                const handleScroll = () => {
-                    if (navbarRef.current) {
-                        if (window.scrollY > 10) {
-                            navbarRef.current.classList.add('shadow-sm');
-                        } else {
-                            navbarRef.current.classList.remove('shadow-sm');
-                        }
-                    }
-                };
-                window.addEventListener('scroll', handleScroll);
-                return () => window.removeEventListener('scroll', handleScroll);
-            }, []);
-
-            // --- Helper Functions ---
-            const getStatusBadgeClass = (status) => {
-                switch (status) {
-                    case 'Submitted': return 'warning';
-                    case 'Approved': return 'success';
-                    case 'Rejected': return 'danger';
-                    default: return 'info';
-                }
-            };
-
-            // --- Render Logic ---
-            return (
-                <React.Fragment>
-                    {/* Navigation */}
-                    <nav className="navbar navbar-expand-lg navbar-light sticky-top" ref={navbarRef}>
-                        <div className="container">
-                            <a className="navbar-brand" href="/">
-                                <i className="bi bi-person-check me-2"></i>
-                                eNivaran
-                            </a>
-                            <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                                <span className="navbar-toggler-icon"></span>
-                            </button>
-                            <div className="collapse navbar-collapse justify-content-end" id="navbarNav">
-                                <ul className="navbar-nav">
-                                    <li className="nav-item">
-                                        <a className="nav-link" href="/">Home</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link" href="/complaints">Complaints</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link active" href="/my_complaints">My Complaints</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link" href="/tools">Tools</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link" href="/logout">Logout</a>
-                                    </li>
-                                    {isAdmin && (
-                                        <li className="nav-item">
-                                            <a className="nav-link" href="/admin_dashboard">Admin Dashboard</a>
-                                        </li>
-                                    )}
-                                </ul>
-                            </div>
-                        </div>
-                    </nav>
-
-                    {/* Main Content */}
-                    <div className="container py-5">
-                        <div className="card shadow-sm border-0" data-aos="fade-up">
-                            <div className="card-body p-4">
-                                <h2 className="card-title mb-4">
-                                    <i className="bi bi-person-lines-fill me-2"></i>
-                                    My Submitted Complaints
-                                </h2>
-
-                                {/* Flash Messages */}
-                                {messages.length > 0 && (
-                                    <div className="flash-messages mb-4">
-                                        {messages.map(([category, message], index) => (
-                                            <div key={index} className={`alert alert-${category === 'error' ? 'danger' : category} mb-2`}>
-                                                {message}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Complaints Table */}
-                                {complaints.length > 0 ? (
-                                    <div className="table-responsive">
-                                        <table className="table table-hover">
-                                            <thead>
-                                                <tr>
-                                                    <th>ID</th>
-                                                    <th>Details & Image</th>
-                                                    <th>Date</th>
-                                                    <th>Status</th>
-                                                    <th>Remarks</th>
-                                                    <th>Votes</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {complaints.map(complaint => (
-                                                    <tr key={complaint.id} data-aos="fade-up" data-aos-delay={100}>
-                                                        <td>
-                                                            #{complaint.id}
-                                                            {complaint.is_duplicate ? (
-                                                                <div className="small text-danger mt-1">
-                                                                    <i className="bi bi-files me-1"></i>
-                                                                    Duplicate of #{complaint.original_report_id}
-                                                                </div>
-                                                            ) : null}
-                                                        </td>
-                                                        <td>
-                                                            <div className="small">
-                                                                {complaint.text}
-                                                                {complaint.image && (
-                                                                    <div className="mt-1">
-                                                                        <img src={complaint.image} alt="Complaint" className="img-thumbnail" style={{maxWidth: "80px"}} />
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="small text-nowrap">
-                                                            {new Date(complaint.submitted_at).toLocaleDateString()}
-                                                        </td>
-                                                        <td>
-                                                            <span className={`badge bg-${getStatusBadgeClass(complaint.status)} small`}>
-                                                                {complaint.status}
-                                                            </span>
-                                                        </td>
-                                                        <td className="small text-wrap">
-                                                            {complaint.remarks || <span className="text-muted">No remarks yet</span>}
-                                                        </td>
-                                                        <td className="small">
-                                                            <i className="bi bi-hand-thumbs-up text-primary me-1"></i>
-                                                            {complaint.upvotes}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                ) : (
-                                    <div className="text-center text-muted p-5">
-                                        <i className="bi bi-inbox display-1 mb-3 d-block"></i>
-                                        <h4>You haven't submitted any complaints yet.</h4>
-                                        <p className="mt-3">
-                                            <a href="/tools" className="btn btn-primary">
-                                                <i className="bi bi-plus-lg me-1"></i>
-                                                Submit New Complaint
-                                            </a>
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Footer */}
-                    <footer>
-                        <div className="container">
-                            <div className="row">
-                                <div className="col-lg-4 col-md-6 mb-4 mb-lg-0">
-                                    <div className="footer-brand">
-                                        <i className="bi bi-person-check me-2"></i>
-                                        eNivaran
-                                    </div>
-                                    <p className="footer-text">
-                                        AI-powered road safety and civic issue reporting for smarter cities.
-                                        Building better communities through technology and citizen participation.
-                                    </p>
-                                    <div className="social-links">
-                                        <a href="#" className="social-link"><i className="bi bi-facebook"></i></a>
-                                        <a href="#" className="social-link"><i className="bi bi-twitter"></i></a>
-                                        <a href="#" className="social-link"><i className="bi bi-instagram"></i></a>
-                                        <a href="#" className="social-link"><i className="bi bi-linkedin"></i></a>
-                                    </div>
-                                </div>
-
-                                <div className="col-lg-2 col-md-6 mb-4 mb-lg-0">
-                                    <div className="footer-links">
-                                        <h5>Navigation</h5>
-                                        <ul>
-                                            <li><a href="/">Home</a></li>
-                                            <li><a href="/complaints">Complaints</a></li>
-                                            <li><a href="/my_complaints">My Complaints</a></li>
-                                            <li><a href="/tools">Tools</a></li>
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                <div className="col-lg-3 col-md-6 mb-4 mb-lg-0">
-                                    <div className="footer-links">
-                                        <h5>Resources</h5>
-                                        <ul>
-                                            <li><a href="#">API Documentation</a></li>
-                                            <li><a href="#">Developer Resources</a></li>
-                                            <li><a href="#">Data Privacy</a></li>
-                                            <li><a href="#">Terms of Service</a></li>
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                <div className="col-lg-3 col-md-6">
-                                    <div className="footer-links">
-                                        <h5>Contact</h5>
-                                        <ul>
-                                            <li><a href="mailto:info@enivaran.com"><i className="bi bi-envelope me-2"></i>info@enivaran.com</a></li>
-                                            <li><a href="tel:+15551234567"><i className="bi bi-telephone me-2"></i>(555) 123-4567</a></li>
-                                            <li><a href="#"><i className="bi bi-geo-alt me-2"></i>123 Tech Lane, Smart City</a></li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="copyright">
-                                <small>
-                                    <i className="bi bi-c-circle me-1"></i> {new Date().getFullYear()} eNivaran | Built with React, Bootstrap, Flask & AI
-                                </small>
-                            </div>
-                        </div>
-                    </footer>
-                </React.Fragment>
-            );
-        };
-
-        // Render My Complaints App
-        ReactDOM.render(<MyComplaintsApp />, document.getElementById('app-root'));
-    </script>
-    {% endraw %}
-
-    <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        AOS.init({
+            duration: 800,
+            once: true,
+            offset: 50
+        });
+    </script>
 </body>
 </html>
