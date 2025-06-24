@@ -2,687 +2,205 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Pothole Detection & Complaints Portal</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap Icons -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - eNivaran</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css" rel="stylesheet">
-    <!-- React and ReactDOM -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-    <!-- Babel for JSX -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.21.2/babel.min.js"></script>
-    <!-- AOS Animation Library -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/aos/2.3.4/aos.js"></script>
-    <!-- Link to your custom CSS (optional) -->
-    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+            background: linear-gradient(135deg, #6f42c1 0%, #8e44ad 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .login-container {
+            background-color: #fff;
+            padding: 40px 32px;
+            border-radius: 18px;
+            box-shadow: 0 8px 32px rgba(44, 62, 80, 0.15);
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            position: relative;
+        }
+        .login-logo {
+            margin-bottom: 18px;
+            display: inline-block;
+            text-decoration: none;
+        }
+        .login-logo i {
+            font-size: 48px;
+            color: #6f42c1;
+        }
+        .login-container h2 {
+            margin-bottom: 22px;
+            color: #222;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        .login-container label {
+            display: block;
+            text-align: left;
+            margin-bottom: 6px;
+            color: #444;
+            font-weight: 500;
+        }
+        .login-container input[type="text"],
+        .login-container input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 18px;
+            border: 1.5px solid #e0e0e0;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 15px;
+            background: #f8fafc;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .login-container input[type="text"]:focus,
+        .login-container input[type="password"]:focus {
+            border-color: #6f42c1;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(111, 66, 193, 0.2);
+            background: #fff;
+        }
+        .login-container button {
+            width: 100%;
+            padding: 13px;
+            background: linear-gradient(90deg, #6f42c1 0%, #8e44ad 100%);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 17px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-top: 5px;
+            box-shadow: 0 2px 8px rgba(111, 66, 193, 0.2);
+            transition: all 0.3s ease;
+        }
+        .login-container button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(111, 66, 193, 0.3);
+        }
+        .login-container button:active {
+            transform: translateY(0);
+        }
+        .signup-link {
+            margin-top: 20px;
+            font-size: 15px;
+            color: #666;
+        }
+        .signup-link a {
+            color: #6f42c1;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .signup-link a:hover {
+            text-decoration: underline;
+        }
+        .flash-messages {
+            list-style: none;
+            padding: 0;
+            margin-bottom: 18px;
+        }
+        .flash-messages li {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            font-size: 15px;
+        }
+        .flash-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .flash-success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .login-type-switch {
+            margin-bottom: 20px;
+            border-radius: 8px;
+            background: #f8fafc;
+            padding: 4px;
+            display: inline-flex;
+            border: 1px solid #e0e0e0;
+        }
+        .login-type-switch label {
+            margin: 0;
+            padding: 8px 16px;
+            cursor: pointer;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+        .login-type-switch input[type="radio"] {
+            display: none;
+        }
+        .login-type-switch input[type="radio"]:checked + label {
+            background: #6f42c1;
+            color: white;
+        }
+    </style>
 </head>
 <body>
-    <div id="app-root"></div>
+    <div class="login-container">
+        <a href="/" class="login-logo">
+            <i class="bi bi-person-check"></i>
+        </a>
+        <h2>Login to eNivaran</h2>
 
-    {% raw %}
-    <script type="text/babel">
-        // Main App Component
-        const App = () => {
-            const [activeTab, setActiveTab] = React.useState('detection');
-            const navbarRef = React.useRef(null);
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <ul class="flash-messages">
+                {% for category, message in messages %}
+                    <li class="flash-{{ category }}">{{ message }}</li>
+                {% endfor %}
+                </ul>
+            {% endif %}
+        {% endwith %}
 
-            // State for Pothole Detection Form
-            const [potholeLoading, setPotholeLoading] = React.useState(false);
-            const [potholeResult, setPotholeResult] = React.useState(null);
-            const [potholeError, setPotholeError] = React.useState(null);
-            const [annotatedImageSrc, setAnnotatedImageSrc] = React.useState('');
+        <form action="{{ url_for('login') }}" method="post" id="loginForm">
+            <div class="login-type-switch">
+                <input type="radio" id="userLogin" name="loginType" value="user" checked onchange="toggleLoginType()">
+                <label for="userLogin">User Login</label>
+                <input type="radio" id="adminLogin" name="loginType" value="admin" onchange="toggleLoginType()">
+                <label for="adminLogin">Admin Login</label>
+            </div>
 
-            // State for Complaint Form
-            const [complaintLoading, setComplaintLoading] = React.useState(false);
-            const [complaintResult, setComplaintResult] = React.useState(null);
-            const [complaintError, setComplaintError] = React.useState(null);
+            <div>
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required autocomplete="username">
+            </div>
+            <div>
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required autocomplete="current-password">
+            </div>
+            <button type="submit" id="loginButton">Login</button>
+        </form>
 
-            // State for Stats
-            const [stats, setStats] = React.useState({
-                total_potholes: '-', high_priority_count: '-', medium_priority_count: '-',
-                low_priority_count: '-', last_updated: '-'
-            });
+        <div class="signup-link" id="signupLink">
+            New to eNivaran? <a href="{{ url_for('signup') }}">Create an account</a>
+        </div>
+    </div>
 
-            // --- Effects ---
-            React.useEffect(() => {
-                // Initialize AOS animations
-                AOS.init({
-                    duration: 1000,
-                    once: true,
-                    offset: 100
-                });
-
-                // Navbar scroll effect
-                const handleScroll = () => {
-                    if (navbarRef.current) {
-                        if (window.scrollY > 10) {
-                            navbarRef.current.classList.add('shadow-sm');
-                        } else {
-                            navbarRef.current.classList.remove('shadow-sm');
-                        }
-                    }
-                };
-                window.addEventListener('scroll', handleScroll);
-
-                // Fetch initial stats when component mounts
-                fetchPotholeStats();
-
-                // Cleanup scroll listener
-                return () => window.removeEventListener('scroll', handleScroll);
-            }, []); // Empty dependency array: runs only once on mount
-
-
-            // --- Helper Functions ---
-            const scrollToSection = (id) => {
-                const element = document.getElementById(id);
-                if (element) {
-                    const offset = 100; // Adjust as needed based on fixed navbar height
-                    const elementPosition = element.getBoundingClientRect().top;
-                    const offsetPosition = elementPosition + window.pageYOffset - offset;
-
-                    window.scrollTo({
-                        top: offsetPosition,
-                        behavior: 'smooth'
-                    });
-                }
-            };
-
-            const fetchPotholeStats = () => {
-                fetch('/pothole_stats')
-                    .then(res => {
-                        if (!res.ok) throw new Error('Failed to fetch stats');
-                        return res.json();
-                    })
-                    .then(data => {
-                        setStats({
-                            total_potholes: data.total_potholes ?? '-',
-                            high_priority_count: data.high_priority_count ?? '-',
-                            medium_priority_count: data.medium_priority_count ?? '-',
-                            low_priority_count: data.low_priority_count ?? '-',
-                            last_updated: data.last_updated
-                                ? new Date(data.last_updated).toLocaleString()
-                                : '-'
-                        });
-                    })
-                    .catch((err) => {
-                        console.error("Error fetching pothole stats:", err);
-                         setStats({ // Reset to default on error
-                            total_potholes: '-', high_priority_count: '-', medium_priority_count: '-',
-                            low_priority_count: '-', last_updated: 'Error loading'
-                         });
-                    });
-            };
-
-            // --- Form Handlers ---
-            const handlePotholeSubmit = (event) => {
-                event.preventDefault(); // Prevent default page refresh!
-                setPotholeLoading(true);
-                setPotholeResult(null);
-                setPotholeError(null);
-                setAnnotatedImageSrc('');
-
-                const form = event.target;
-                const formData = new FormData(form);
-
-                fetch('/detect_pothole', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(async response => {
-                    if (!response.ok) {
-                        // Try to parse JSON error, otherwise use status text
-                        let errorMsg = `Detection failed with status ${response.status}`;
-                        try {
-                            const errorData = await response.json();
-                            errorMsg = errorData.error || errorMsg;
-                        } catch (jsonError) {
-                            // Keep the status-based error message
-                        }
-                        throw new Error(errorMsg);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    setPotholeResult(data.result);
-                    setAnnotatedImageSrc('data:image/jpeg;base64,' + data.annotated_image_b64);
-                    fetchPotholeStats(); // Refresh stats after successful detection
-                })
-                .catch(err => {
-                    setPotholeError(err.message);
-                })
-                .finally(() => {
-                    setPotholeLoading(false);
-                });
-            };
-
-            const handleComplaintSubmit = (event) => {
-                event.preventDefault(); // Prevent default page refresh!
-                setComplaintLoading(true);
-                setComplaintResult(null);
-                setComplaintError(null);
-
-                const form = event.target;
-                const formData = new FormData(form);
-
-                fetch('/raise_complaint', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(async response => {
-                     if (!response.ok) {
-                         let errorMsg = `Submission failed with status ${response.status}`;
-                         try {
-                            const errorData = await response.json();
-                            errorMsg = errorData.error || errorMsg;
-                        } catch (jsonError) {
-                            // Keep the status-based error message
-                        }
-                        throw new Error(errorMsg);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    setComplaintResult(data.message || 'Complaint submitted successfully.');
-                    form.reset(); // Optionally reset the form fields on success
-                })
-                .catch(err => {
-                    setComplaintError(err.message);
-                })
-                .finally(() => {
-                    setComplaintLoading(false);
-                });
-            };
-
-
-            // --- Render Logic ---
-            return (
-                <React.Fragment>
-                    {/* Navigation */}
-                    <nav className="navbar navbar-expand-lg navbar-light sticky-top" ref={navbarRef}>
-                        <div className="container">
-                            <a className="navbar-brand" href="#">
-                                <i className="bi bi-cone-striped me-2"></i>
-                                eNivaran
-                            </a>
-                            <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                                <span className="navbar-toggler-icon"></span>
-                            </button>
-                            <div className="collapse navbar-collapse justify-content-end" id="navbarNav">
-                                <ul className="navbar-nav">
-                                    <li className="nav-item">
-                                        <a className="nav-link active" href="#" onClick={(e) => { e.preventDefault(); scrollToSection('home'); }}>Home</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link" href="#" onClick={(e) => { e.preventDefault(); scrollToSection('features'); }}>Features</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link" href="#" onClick={(e) => { e.preventDefault(); scrollToSection('how-it-works'); }}>How It Works</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link" href="/tools"><i className="bi bi-tools me-1"></i>Tools</a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link d-flex align-items-center gap-2" href="/my_complaints">
-                                            <i className="bi bi-list-check"></i>
-                                            My Complaints
-                                            <span className="badge bg-primary rounded-pill">View Status</span>
-                                        </a>
-                                    </li>
-                                    <li className="nav-item">
-                                        <a className="nav-link text-danger" href="/logout">
-                                            <i className="bi bi-box-arrow-right me-1"></i>Logout
-                                        </a>
-                                    </li>
-                                </ul>
-                            </div>
-                        </div>
-                    </nav>
-
-                    {/* Hero Section */}
-                    <section className="hero-section" id="home">
-                         <div className="hero-bg">
-                            <div className="hero-bg-circle circle-1"></div>
-                            <div className="hero-bg-circle circle-2"></div>
-                            <div className="hero-bg-circle circle-3"></div>
-                        </div>
-                        <div className="container">
-                            <div className="row align-items-center">
-                                <div className="col-lg-6 hero-content" data-aos="fade-right">
-                                    <h1 className="hero-title text-white display-4 fw-bold">Smart Pothole Detection & Civic Management</h1>
-                                    <p className="hero-text text-white fs-5 my-4">
-                                        AI-powered road safety and civic issue reporting system that helps create safer,
-                                        smarter cities through community participation and cutting-edge technology.
-                                    </p>
-                                    <div>
-                                        <button className="btn hero-cta btn-light btn-lg me-2" onClick={() => scrollToSection('tools-section')}>
-                                            Get Started <i className="bi bi-arrow-right-short"></i>
-                                        </button>
-                                        <button className="btn hero-cta btn-outline-light btn-lg" onClick={() => scrollToSection('how-it-works')}>
-                                            Learn More
-                                        </button>
-                                    </div>
-                                </div>
-                                <div className="col-lg-6 text-center mt-5 mt-lg-0" data-aos="fade-left">
-                                    {/* Placeholder image - replace with your actual image URL */}
-                                    <img src="static\narendra-modi-india-flag-.webp" alt="Pothole Detection Illustration" className="pothole-illustration img-fluid shadow-lg" />
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Features Section */}
-                    <section className="features-section" id="features">
-                        <div className="container">
-                            <div className="text-center mb-5" data-aos="fade-up">
-                                <h2 className="display-5 fw-bold mb-3">Key Features</h2>
-                                <p className="lead text-muted mx-auto" style={{maxWidth: "700px"}}>
-                                    Our platform combines AI technology with community engagement to create safer roads and more responsive city services.
-                                </p>
-                            </div>
-
-                            <div className="row">
-                                <div className="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="100">
-                                    <div className="feature-card h-100">
-                                        <div className="feature-icon">
-                                            <i className="bi bi-camera"></i>
-                                        </div>
-                                        <h3 className="feature-title h5 fw-bold">AI Pothole Detection</h3>
-                                        <p className="feature-text text-muted">
-                                            Advanced machine learning algorithms that can detect potholes from images with high accuracy and prioritize them based on severity.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="200">
-                                    <div className="feature-card h-100">
-                                        <div className="feature-icon">
-                                            <i className="bi bi-flag"></i>
-                                        </div>
-                                        <h3 className="feature-title h5 fw-bold">Civic Issue Reporting</h3>
-                                        <p className="feature-text text-muted">
-                                            Easy-to-use platform for citizens to report road conditions and other civic issues directly to municipal authorities.
-                                        </p>
-                                    </div>
-                                </div>
-
-                                <div className="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="300">
-                                    <div className="feature-card h-100">
-                                        <div className="feature-icon">
-                                            <i className="bi bi-graph-up"></i>
-                                        </div>
-                                        <h3 className="feature-title h5 fw-bold">Real-time Analytics</h3>
-                                        <p className="feature-text text-muted">
-                                            Comprehensive dashboard showing critical statistics and trends to help authorities prioritize road maintenance efforts.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* How It Works */}
-                    <section className="how-it-works" id="how-it-works">
-                        <div className="container">
-                            <div className="text-center mb-5" data-aos="fade-up">
-                                <h2 className="display-5 fw-bold mb-3">How It Works</h2>
-                                <p className="lead text-muted mx-auto" style={{maxWidth: "700px"}}>
-                                    Our platform streamlines the process of detecting, reporting, and fixing road issues in just a few simple steps.
-                                </p>
-                            </div>
-
-                            <div className="row justify-content-center">
-                                <div className="col-lg-8">
-                                    <div className="step-card" data-aos="fade-up" data-aos-delay="100">
-                                        <div className="step-number">1</div>
-                                        <div className="step-content">
-                                            <h4 className="h5 fw-bold">Take a Photo</h4>
-                                            <p className="text-muted mb-0">Capture an image of the pothole or road damage using your smartphone or camera.</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="step-card" data-aos="fade-up" data-aos-delay="200">
-                                        <div className="step-number">2</div>
-                                        <div className="step-content">
-                                            <h4 className="h5 fw-bold">Upload for Analysis</h4>
-                                            <p className="text-muted mb-0">Upload the image to our AI system which will detect and classify the severity of the pothole.</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="step-card" data-aos="fade-up" data-aos-delay="300">
-                                        <div className="step-number">3</div>
-                                        <div className="step-content">
-                                            <h4 className="h5 fw-bold">Submit a Complaint</h4>
-                                            <p className="text-muted mb-0">File a formal complaint with location details that will be forwarded to the relevant authorities.</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="step-card" data-aos="fade-up" data-aos-delay="400">
-                                        <div className="step-number">4</div>
-                                        <div className="step-content">
-                                            <h4 className="h5 fw-bold">Track Progress</h4>
-                                            <p className="text-muted mb-0">Monitor the status of your complaint and receive updates when the issue is addressed.</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Tools Section */}
-                    <section className="container my-5" id="tools-section">
-                        <div className="text-center mb-5" data-aos="fade-up">
-                            <h2 className="display-5 fw-bold mb-3">Our Tools</h2>
-                            <p className="lead text-muted mx-auto" style={{maxWidth: "700px"}}>
-                                Access our pothole detection algorithm and civic complaint system to help improve road conditions in your area.
-                            </p>
-
-                            <div className="content-tabs d-inline-flex mt-4">
-                                <div
-                                    className={`content-tab ${activeTab === 'detection' ? 'active' : ''}`}
-                                    onClick={() => setActiveTab('detection')}
-                                >
-                                    <i className="bi bi-search me-2"></i>
-                                    Pothole Detection
-                                </div>
-                                <div
-                                    className={`content-tab ${activeTab === 'complaint' ? 'active' : ''}`}
-                                    onClick={() => setActiveTab('complaint')}
-                                >
-                                    <i className="bi bi-flag-fill me-2"></i>
-                                    Raise Complaint
-                                </div>
-                            </div>
-                        </div>
-
+    <script>
+        function toggleLoginType() {
+            const isAdmin = document.getElementById('adminLogin').checked;
+            const signupLink = document.getElementById('signupLink');
+            const loginButton = document.getElementById('loginButton');
             
-
-                        {/* Pothole Detection Form - Updated */}
-                        {activeTab === 'detection' && (
-                            <div className="row mb-5" data-aos="fade-up" key="detection-form"> {/* Added key for better transition */}
-                                <div className="col-lg-10 col-xl-8 mx-auto">
-                                    <div className="card shadow-sm">
-                                        <div className="card-body p-4 p-md-5">
-                                            <h3 className="card-title mb-4"><i className="bi bi-camera-fill me-2"></i>Pothole Detection</h3>
-                                            {/* Add onSubmit handler here */}
-                                            <form id="pothole-form" encType="multipart/form-data" autoComplete="off" onSubmit={handlePotholeSubmit}>
-                                                <div className="mb-3">
-                                                    <label htmlFor="image" className="form-label fw-bold">Upload Road Image</label>
-                                                    <input className="form-control form-control-lg" type="file" id="image" name="image" accept="image/*" required />
-                                                    <div className="form-text">Supported formats: JPG, JPEG, PNG, WebP</div>
-                                                </div>
-                                                {/* Disable button while loading */}
-                                                <button type="submit" className="btn btn-primary btn-lg w-100" disabled={potholeLoading}>
-                                                    {potholeLoading ? (
-                                                        <>
-                                                            <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                                            Detecting...
-                                                        </>
-                                                    ) : (
-                                                        <> <i className="bi bi-search me-2"></i> Check for Pothole </>
-                                                    )}
-                                                </button>
-                                            </form>
-                                            {/* Show result section based on state */}
-                                            {potholeResult && !potholeLoading && (
-                                                <div id="result-section" className="mt-4">
-                                                    <hr/>
-                                                    <h5>Detection Result</h5>
-                                                    <pre id="result-json" className="bg-light p-3 rounded small">{JSON.stringify(potholeResult, null, 2)}</pre>
-                                                    <h6 className="mt-3">Annotated Image</h6>
-                                                    <img id="annotated-image" src={annotatedImageSrc} alt="Annotated Result" className="img-fluid border rounded shadow-sm" />
-                                                </div>
-                                            )}
-                                            {/* Show error section based on state */}
-                                            {potholeError && !potholeLoading && (
-                                                <div id="error-section" className="alert alert-danger mt-4">
-                                                    <i className="bi bi-exclamation-triangle-fill me-2"></i> {potholeError}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Complaint Form - Updated */}
-                        {activeTab === 'complaint' && (
-                            <div className="row mb-5" data-aos="fade-up" key="complaint-form"> {/* Added key for better transition */}
-                                <div className="col-lg-10 col-xl-8 mx-auto">
-                                    <div className="card shadow-sm">
-                                        <div className="card-body p-4 p-md-5">
-                                            <h3 className="card-title mb-4"><i className="bi bi-flag-fill me-2"></i>Raise Civic Complaint</h3>
-                                             {/* Add onSubmit handler here */}
-                                            <form id="complaint-form" encType="multipart/form-data" autoComplete="off" onSubmit={handleComplaintSubmit}>
-                                                {/* Form fields */}
-                                                <div className="mb-3">
-                                                    <label htmlFor="complaint-text" className="form-label fw-bold">Complaint Description</label>
-                                                    <textarea className="form-control" id="complaint-text" name="text" rows="3" required placeholder="Describe the issue clearly..."></textarea>
-                                                </div>
-                                                <div className="mb-3">
-                                                    <label htmlFor="issue-type" className="form-label fw-bold">Issue Type</label>
-                                                    <input className="form-control" type="text" id="issue-type" name="issue_type" placeholder="e.g., Pothole, Damaged Sign, Streetlight Out" required />
-                                                </div>
-                                                 <div className="row g-3 mb-3">
-                                                    <div className="col-md-6">
-                                                        <label htmlFor="street" className="form-label fw-bold">Street Name</label>
-                                                        <input className="form-control" type="text" id="street" name="street" required />
-                                                    </div>
-                                                    <div className="col-md-6">
-                                                        <label htmlFor="city" className="form-label fw-bold">City Name</label>
-                                                        <input className="form-control" type="text" id="city" name="city" required />
-                                                    </div>
-                                                    <div className="col-md-6">
-                                                        <label htmlFor="state" className="form-label fw-bold">State</label>
-                                                        <input className="form-control" type="text" id="state" name="state" required />
-                                                    </div>
-                                                    <div className="col-md-6">
-                                                        <label htmlFor="zipcode" className="form-label fw-bold">Zip Code</label>
-                                                        <input className="form-control" type="text" id="zipcode" name="zipcode" required />
-                                                    </div>
-                                                </div>
-                                                <div className="mb-4">
-                                                    <label htmlFor="complaint-image" className="form-label fw-bold">Upload Image Evidence</label>
-                                                    <input className="form-control" type="file" id="complaint-image" name="image" accept="image/*" required />
-                                                    <div className="form-text">Supported formats: JPG, JPEG, PNG, WebP</div>
-                                                </div>
-
-                                                {/* Disable button while loading */}
-                                                <button type="submit" className="btn btn-success btn-lg w-100" disabled={complaintLoading}>
-                                                    {complaintLoading ? (
-                                                        <>
-                                                            <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                                                            Submitting...
-                                                        </>
-                                                    ) : (
-                                                        <> <i className="bi bi-send-fill me-2"></i> Submit Complaint </>
-                                                    )}
-                                                </button>
-                                            </form>
-                                            {/* Show result message based on state */}
-                                            {complaintResult && !complaintLoading && (
-                                                <div id="complaint-result-section" className="mt-4">
-                                                     <hr/>
-                                                    <div className="alert alert-success d-flex align-items-center" role="alert">
-                                                        <i className="bi bi-check-circle-fill me-2"></i>
-                                                        <div id="complaint-result-message">{complaintResult}</div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                            {/* Show error message based on state */}
-                                            {complaintError && !complaintLoading && (
-                                                <div id="complaint-error-section" className="alert alert-danger mt-4">
-                                                     <i className="bi bi-exclamation-triangle-fill me-2"></i> {complaintError}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </section>
-
-                    {/* Testimonial Section */}
-                    <section className="container mb-5 py-5 bg-light rounded" data-aos="fade-up">
-                        <div className="text-center mb-5">
-                            <h2 className="display-5 fw-bold mb-3">What Users Say</h2>
-                            <p className="lead text-muted mx-auto" style={{maxWidth: "700px"}}>
-                                Hear from citizens and municipal workers who use our platform to improve their communities.
-                            </p>
-                        </div>
-
-                        <div className="row">
-                            <div className="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="100">
-                                <div className="card h-100 shadow-sm border-0">
-                                    <div className="card-body d-flex flex-column">
-                                        <div className="mb-3">
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                        </div>
-                                        <p className="card-text text-muted fst-italic">"As a city maintenance worker, this platform has revolutionized how we prioritize road repairs. The AI detection is surprisingly accurate!"</p>
-                                        <div className="d-flex align-items-center mt-auto pt-3">
-                                            <div className="rounded-circle bg-primary text-white d-flex align-items-center justify-content-center me-3" style={{width: "50px", height: "50px", fontSize: "1.5rem"}}>
-                                                <i className="bi bi-person-fill"></i>
-                                            </div>
-                                            <div>
-                                                <h6 className="mb-0 fw-bold">Robert Chen</h6>
-                                                <small className="text-muted">City Maintenance Dept.</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="200">
-                                 <div className="card h-100 shadow-sm border-0">
-                                    <div className="card-body d-flex flex-column">
-                                        <div className="mb-3">
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                        </div>
-                                        <p className="card-text text-muted fst-italic">"I reported a pothole near my home and it was fixed within a week! The process was simple and straightforward. Great civic tool!"</p>
-                                        <div className="d-flex align-items-center mt-auto pt-3">
-                                             <div className="rounded-circle bg-success text-white d-flex align-items-center justify-content-center me-3" style={{width: "50px", height: "50px", fontSize: "1.5rem"}}>
-                                                <i className="bi bi-person-fill"></i>
-                                            </div>
-                                            <div>
-                                                <h6 className="mb-0 fw-bold">Sarah Johnson</h6>
-                                                <small className="text-muted">Community Member</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="col-md-4 mb-4" data-aos="fade-up" data-aos-delay="300">
-                                 <div className="card h-100 shadow-sm border-0">
-                                    <div className="card-body d-flex flex-column">
-                                        <div className="mb-3">
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-fill text-warning"></i>
-                                            <i className="bi bi-star-half text-warning"></i>
-                                        </div>
-                                        <p className="card-text text-muted fst-italic">"As a transportation planner, the data analytics this platform provides helps us make informed decisions about infrastructure improvements."</p>
-                                        <div className="d-flex align-items-center mt-auto pt-3">
-                                             <div className="rounded-circle bg-info text-white d-flex align-items-center justify-content-center me-3" style={{width: "50px", height: "50px", fontSize: "1.5rem"}}>
-                                                <i className="bi bi-person-fill"></i>
-                                            </div>
-                                            <div>
-                                                <h6 className="mb-0 fw-bold">Michael Torres</h6>
-                                                <small className="text-muted">City Planner</small>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </section>
-
-                    {/* Footer */}
-                    <footer>
-                        <div className="container">
-                            <div className="row">
-                                <div className="col-lg-4 col-md-6 mb-4 mb-lg-0">
-                                    <div className="footer-brand d-flex align-items-center mb-3">
-                                        <i className="bi bi-cone-striped me-2"></i>
-                                        eNivaran
-                                    </div>
-                                    <p className="footer-text">
-                                        AI-powered road safety and civic issue reporting for smarter cities.
-                                        Building better communities through technology and citizen participation.
-                                    </p>
-                                    <div className="social-links mt-4">
-                                        <a href="#" className="social-link me-3"><i className="bi bi-facebook"></i></a>
-                                        <a href="#" className="social-link me-3"><i className="bi bi-twitter"></i></a>
-                                        <a href="#" className="social-link me-3"><i className="bi bi-instagram"></i></a>
-                                        <a href="#" className="social-link"><i className="bi bi-linkedin"></i></a>
-                                    </div>
-                                </div>
-
-                                <div className="col-lg-2 col-md-6 mb-4 mb-lg-0">
-                                    <div className="footer-links">
-                                        <h5>Navigation</h5>
-                                        <ul>
-                                            <li><a href="#" onClick={(e) => { e.preventDefault(); scrollToSection('home'); }}>Home</a></li>
-                                            <li><a href="#" onClick={(e) => { e.preventDefault(); scrollToSection('features'); }}>Features</a></li>
-                                            <li><a href="#" onClick={(e) => { e.preventDefault(); scrollToSection('how-it-works'); }}>How It Works</a></li>
-                                            <li><a href="#" onClick={(e) => { e.preventDefault(); scrollToSection('tools-section'); }}>Tools</a></li>
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                <div className="col-lg-3 col-md-6 mb-4 mb-lg-0">
-                                    <div className="footer-links">
-                                        <h5>Resources</h5>
-                                        <ul>
-                                            <li><a href="#">API Documentation</a></li>
-                                            <li><a href="#">Developer Resources</a></li>
-                                            <li><a href="#">Data Privacy</a></li>
-                                            <li><a href="#">Terms of Service</a></li>
-                                        </ul>
-                                    </div>
-                                </div>
-
-                                <div className="col-lg-3 col-md-6 mb-4 mb-lg-0">
-                                    <div className="footer-links">
-                                        <h5>Contact</h5>
-                                        <ul className="list-unstyled">
-                                            <li className="mb-2"><a href="mailto:info@enivaran.com"><i className="bi bi-envelope me-2"></i>info@enivaran.com</a></li>
-                                            <li className="mb-2"><a href="tel:+15551234567"><i className="bi bi-telephone me-2"></i>(555) 123-4567</a></li>
-                                            <li><a href="#"><i className="bi bi-geo-alt me-2"></i>123 Tech Lane, Smart City</a></li>
-                                        </ul>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="copyright mt-5">
-                                <small>
-                                    <i className="bi bi-c-circle me-1"></i> {new Date().getFullYear()} eNivaran | Built with React, Bootstrap, Flask & AI
-                                </small>
-                            </div>
-                        </div>
-                    </footer>
-                </React.Fragment>
-            );
+            signupLink.style.display = isAdmin ? 'none' : 'block';
+            loginButton.textContent = isAdmin ? 'Admin Login' : 'Login';
+            loginButton.style.background = isAdmin 
+                ? 'linear-gradient(90deg, #dc3545 0%, #c82333 100%)'
+                : 'linear-gradient(90deg, #6f42c1 0%, #8e44ad 100%)';
         }
-
-        // Render App component
-        ReactDOM.render(<App />, document.getElementById('app-root'));
     </script>
-    {% endraw %}
-
-    <!-- Bootstrap 5 JS Bundle (needed for toggler, etc.) -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
 </body>
 </html>
