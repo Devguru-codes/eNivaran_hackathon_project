@@ -108,6 +108,42 @@ from duplication_detection_code import get_duplicate_detector
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'dev-secret-key-replace-later'
 
+# Initialize the duplicate detector
+detector = get_duplicate_detector(location_threshold=0.1)  # 100-meter threshold
+
+def load_existing_complaints_into_detector():
+    """
+    Loads all existing, non-duplicate complaints from the database into the
+    in-memory duplicate detector on application startup.
+    """
+    app.logger.info("Loading existing complaints into duplicate detector...")
+    with sqlite3.connect(APP_DB) as conn:
+        conn.row_factory = dict_factory
+        # Load only original (non-duplicate) reports for comparison
+        complaints_to_load = conn.execute(
+            'SELECT id, text, location_lat, location_lon, issue_type, image FROM complaints WHERE is_duplicate = 0'
+        ).fetchall()
+
+        for complaint in complaints_to_load:
+            if not all(k in complaint for k in ['id', 'text', 'location_lat', 'location_lon', 'issue_type', 'image']):
+                app.logger.warning(f"Skipping incomplete complaint record: {complaint.get('id')}")
+                continue
+            
+            report_dict = {
+                'id': complaint['id'],
+                'text': complaint['text'],
+                'location': (complaint['location_lat'], complaint['location_lon']),
+                'issue_type': complaint['issue_type'],
+                'image_bytes': complaint['image']
+            }
+            detector.add_report(report_dict)
+    
+    app.logger.info(f"Loaded {len(complaints_to_load)} complaints into the detector.")
+    # Optionally build clusters after loading
+    if len(complaints_to_load) > 1:
+        detector.build_clusters()
+        app.logger.info("Detector clusters have been built.")
+
 # Add Jinja2 filter for base64 encoding
 def b64encode_filter(data):
     """Jinja2 filter to base64 encode binary data."""
@@ -298,10 +334,23 @@ def init_database():
         if c.execute('SELECT COUNT(*) FROM pothole_stats').fetchone()[0] == 0:
             c.execute('INSERT INTO pothole_stats (id) VALUES (1)')
             
+        # Create upvotes table to track user votes
+        c.execute('''
+            CREATE TABLE IF NOT EXISTS upvotes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                complaint_id INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+                FOREIGN KEY (complaint_id) REFERENCES complaints (id) ON DELETE CASCADE,
+                UNIQUE (user_id, complaint_id)
+            )''')
+
         # Create indexes for better performance
         c.execute('CREATE INDEX IF NOT EXISTS idx_complaints_user_id ON complaints(user_id)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_complaints_submitted_at ON complaints(submitted_at)')
         c.execute('CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)')
+        c.execute('CREATE INDEX IF NOT EXISTS idx_upvotes_user_complaint ON upvotes(user_id, complaint_id)')
         
         conn.commit()
 
@@ -320,6 +369,24 @@ def init_app():
             conn = sqlite3.connect(APP_DB)
             conn.execute('PRAGMA foreign_keys = ON')
             conn.close()
+
+def init_app():
+    # Initialize the database
+    init_database()
+    
+    # Create required directories
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    # Enable foreign key support for all connections
+    @app.before_request
+    def enable_foreign_keys():
+        if request.endpoint != 'static_files':  # Skip for static files
+            conn = sqlite3.connect(APP_DB)
+            conn.execute('PRAGMA foreign_keys = ON')
+            conn.close()
+    
+    # Load existing complaints into the duplicate detector
+    load_existing_complaints_into_detector()
 
 # Initialize the application
 init_app()
@@ -439,29 +506,40 @@ def logout():
 def admin_dashboard():
     if not session.get('is_admin'):
         return redirect(url_for('index'))
+
+    search_id = request.args.get('search_id', type=int)
+
+    # Dynamically build the WHERE clause and parameters
+    where_conditions = []
+    params = []
+
+    if search_id:
+        where_conditions.append("c.id = ?")
+        params.append(search_id)
+
+    # Construct the final WHERE clause string
+    where_clause = ""
+    if where_conditions:
+        where_clause = "WHERE " + " AND ".join(where_conditions)
+
     with sqlite3.connect(APP_DB) as conn:
         conn.row_factory = dict_factory
-        complaints_raw = conn.execute('''
+
+        query = f'''
             SELECT 
-                c.id, 
-                c.text, 
+                c.id, c.text, 
                 CAST(c.location_lat AS FLOAT) as location_lat,
                 CAST(c.location_lon AS FLOAT) as location_lon,
-                c.issue_type,
-                c.image,
-                c.submitted_at,
-                c.status,
-                c.upvotes,
-                c.remarks,
-                c.is_duplicate,
-                c.original_report_id,
-                u.username,
-                u.full_name as reporter_name,
-                c.user_id
+                c.issue_type, c.image, c.submitted_at, c.status,
+                c.upvotes, c.remarks, c.is_duplicate, c.original_report_id,
+                u.username, u.full_name as reporter_name, c.user_id
             FROM complaints c
             LEFT JOIN users u ON c.user_id = u.id
+            {where_clause}
             ORDER BY c.submitted_at DESC
-        ''').fetchall()
+        '''
+        
+        complaints_raw = conn.execute(query, params).fetchall()
         
         # Process and validate each complaint
         processed_complaints = []
@@ -512,7 +590,9 @@ def admin_dashboard():
                 app.logger.error(f"Error processing complaint {complaint.get('id', 'unknown')}: {str(e)}")
                 continue
         
-    return render_template('admin_dashboard.html', complaints=processed_complaints)
+    return render_template('admin_dashboard.html', 
+                         complaints=processed_complaints,
+                         search_id=search_id)
 
 @app.route('/update_complaint_status/<int:complaint_id>', methods=['POST'])
 @login_required
@@ -531,6 +611,35 @@ def update_complaint_status(complaint_id):
         conn.commit()
     flash('Complaint status updated successfully.', 'success')
     return redirect(url_for('admin_dashboard'))
+
+@app.route('/delete_complaint/<int:complaint_id>', methods=['POST'])
+@login_required
+def delete_complaint(complaint_id):
+    if not session.get('is_admin'):
+        app.logger.warning(f"Non-admin user {session.get('user_id')} attempted to delete complaint {complaint_id}.")
+        return jsonify({'error': 'Unauthorized access.'}), 403
+
+    try:
+        with sqlite3.connect(APP_DB) as conn:
+            conn.execute('PRAGMA foreign_keys = ON') # Ensure cascading deletes work
+            cursor = conn.cursor()
+            
+            # Check if the complaint exists before deleting
+            result = cursor.execute('SELECT id FROM complaints WHERE id = ?', (complaint_id,)).fetchone()
+            if not result:
+                return jsonify({'error': 'Complaint not found.'}), 404
+            
+            # Delete the complaint. The ON DELETE CASCADE on the upvotes table will handle related upvotes.
+            cursor.execute('DELETE FROM complaints WHERE id = ?', (complaint_id,))
+            conn.commit()
+            
+            app.logger.info(f"Admin {session.get('username')} deleted complaint #{complaint_id}.")
+            flash('Complaint deleted successfully.', 'success')
+            return jsonify({'success': True, 'message': 'Complaint deleted successfully.'})
+
+    except sqlite3.Error as e:
+        app.logger.error(f"Database error while deleting complaint {complaint_id}: {e}")
+        return jsonify({'error': 'Database operation failed.', 'details': str(e)}), 500
 
 # --- Public & User Complaint Routes ---
 @app.route('/pothole_stats')
@@ -575,34 +684,45 @@ def pothole_stats():
 @login_required
 def view_complaints():
     sort_by = request.args.get('sort', 'time_desc')
+    search_id = request.args.get('search_id', type=int)  # Get the search_id as an integer
+
+    # --- Start of new logic ---
     order_clause = "ORDER BY submitted_at DESC"
     if sort_by == 'upvotes_desc':
         order_clause = "ORDER BY upvotes DESC, submitted_at DESC"
     elif sort_by == 'time_asc':
         order_clause = "ORDER BY submitted_at ASC"
+
+    # Dynamically build the WHERE clause and parameters to prevent SQL injection
+    where_conditions = ["(c.is_duplicate = 0 OR c.is_duplicate IS NULL)"]
+    params = []
+
+    if search_id:
+        where_conditions.append("c.id = ?")
+        params.append(search_id)
+    
+    where_clause = "WHERE " + " AND ".join(where_conditions)
+    # --- End of new logic ---
     
     with sqlite3.connect(APP_DB) as conn:
         conn.row_factory = dict_factory
-        complaints_raw = conn.execute(f'''
+        
+        # Build the final query
+        query = f'''
             SELECT 
-                c.id, 
-                c.text, 
+                c.id, c.text, 
                 CAST(c.location_lat AS FLOAT) as location_lat,
                 CAST(c.location_lon AS FLOAT) as location_lon,
-                c.issue_type,
-                c.image,
-                c.submitted_at,
-                c.status,
-                c.upvotes,
-                c.remarks,
-                c.is_duplicate,
-                c.original_report_id,
+                c.issue_type, c.image, c.submitted_at, c.status,
+                c.upvotes, c.remarks, c.is_duplicate, c.original_report_id,
                 u.username 
             FROM complaints c
             LEFT JOIN users u ON c.user_id = u.id
-            WHERE c.is_duplicate = 0 OR c.is_duplicate IS NULL
+            {where_clause}
             {order_clause}
-        ''').fetchall()
+        '''
+        
+        complaints_raw = conn.execute(query, params).fetchall()
         
         # Process and validate each complaint
         processed_complaints = []
@@ -651,26 +771,59 @@ def view_complaints():
                 app.logger.error(f"Error processing complaint {complaint.get('id', 'unknown')}: {str(e)}")
                 continue
     
-    return render_template('complaints.html', complaints=processed_complaints, sort_by=sort_by)
+    # Pass search_id back to the template
+    return render_template('complaints.html', 
+                         complaints=processed_complaints, 
+                         sort_by=sort_by,
+                         search_id=search_id)
 
 @app.route('/upvote_complaint/<int:complaint_id>', methods=['POST'])
 @login_required
 def upvote_complaint(complaint_id):
     if session.get('is_admin'):
         return jsonify({'error': 'Admins cannot upvote.'}), 403
+
+    user_id = session['user_id']
+
     with sqlite3.connect(APP_DB) as conn:
         conn.execute('PRAGMA foreign_keys = ON')
         conn.row_factory = dict_factory
-        # Update upvote count
-        conn.execute('UPDATE complaints SET upvotes = upvotes + 1 WHERE id = ?', (complaint_id,))
-        conn.commit()
-        
-        # Get updated count
-        result = conn.execute('SELECT upvotes FROM complaints WHERE id = ?', (complaint_id,)).fetchone()
-        if result:
-            new_count = result['upvotes']
-            return jsonify({'success': True, 'new_count': new_count})
-    return jsonify({'error': 'Complaint not found.'}), 404
+        cursor = conn.cursor()
+
+        try:
+            # Step 1: Try to record the upvote.
+            # The UNIQUE constraint on the table will cause this to fail if the user has already voted.
+            cursor.execute(
+                'INSERT INTO upvotes (user_id, complaint_id) VALUES (?, ?)',
+                (user_id, complaint_id)
+            )
+            
+            # Step 2: If the insert was successful, update the upvote count on the complaint.
+            cursor.execute(
+                'UPDATE complaints SET upvotes = upvotes + 1 WHERE id = ?',
+                (complaint_id,)
+            )
+            
+            conn.commit()
+            
+            # Step 3: Fetch the new count and return success.
+            result = cursor.execute('SELECT upvotes FROM complaints WHERE id = ?', (complaint_id,)).fetchone()
+            if result:
+                return jsonify({'success': True, 'new_count': result['upvotes']})
+            else:
+                # This case is unlikely but handled for completeness
+                return jsonify({'error': 'Complaint not found after upvoting.'}), 404
+
+        except sqlite3.IntegrityError:
+            # This error occurs if the (user_id, complaint_id) pair already exists.
+            conn.rollback()
+            app.logger.warning(f"User {user_id} attempted to upvote complaint {complaint_id} again.")
+            return jsonify({'error': 'You have already upvoted this complaint.'}), 409 # 409 Conflict
+
+        except Exception as e:
+            conn.rollback()
+            app.logger.error(f"Error during upvote for complaint {complaint_id} by user {user_id}: {e}")
+            return jsonify({'error': 'An unexpected error occurred.'}), 500
 
 # --- NEW: My Complaints Route ---
 @app.route('/my_complaints')
@@ -762,20 +915,38 @@ def raise_complaint():
     if not all([form.get(k) for k in ['text', 'issue_type', 'street', 'city', 'state', 'zipcode']]) or 'image' not in request.files:
         return jsonify({'error': 'All fields and an image are required.'}), 400
 
+    image_file = request.files['image']
+    image_bytes = image_file.read()
+    
     lat, lon = get_coordinates_from_address(form['street'], form['city'], form['state'], form['zipcode'])
     if not lat:
         return jsonify({'error': 'Could not find coordinates for the address.'}), 400
 
-    image_bytes = request.files['image'].read()
+    # 1. Create a report dictionary for the detector
+    new_report_data = {
+        'text': form['text'],
+        'location': (lat, lon),
+        'issue_type': form['issue_type'],
+        'image_bytes': image_bytes
+        # We will add the 'id' later if it's not a duplicate
+    }
     
-    # Placeholder for duplication logic
-    is_duplicate, original_id = False, None
-    # Here you would call your duplication detection logic
-    # is_duplicate, original_id, confidence = detector.find_duplicates(...)
+    # 2. Check for duplicates using the detector
+    is_duplicate, similar_reports, confidence = detector.find_duplicates(new_report_data)
+    original_id = None
+    
+    if is_duplicate and similar_reports:
+        # Get the ID of the most similar report
+        original_id = similar_reports[0].get('id')
+        app.logger.info(f"Duplicate detected with confidence {confidence:.2f}. Original report ID: {original_id}")
+    else:
+        app.logger.info("No significant duplicate found. Registering as a new complaint.")
 
+    # 3. Save the complaint to the database with the duplication result
     with sqlite3.connect(APP_DB) as conn:
         conn.execute('PRAGMA foreign_keys = ON')
-        conn.execute('''
+        cursor = conn.cursor()
+        cursor.execute('''
             INSERT INTO complaints (
                 text, location_lat, location_lon, issue_type,
                 image, image_filename, user_id,
@@ -783,12 +954,24 @@ def raise_complaint():
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             form['text'], lat, lon, form['issue_type'],
-            image_bytes, secure_filename(request.files['image'].filename),
-            user_id, is_duplicate, original_id
+            image_bytes, secure_filename(image_file.filename),
+            user_id, 1 if is_duplicate else 0, original_id
         ))
+        
+        # Get the ID of the newly inserted complaint
+        new_complaint_id = cursor.lastrowid
         conn.commit()
 
-    return jsonify({'message': 'Complaint registered successfully.'}), 200
+    # 4. If it was NOT a duplicate, add it to the detector's in-memory list for future checks
+    if not is_duplicate:
+        new_report_data['id'] = new_complaint_id  # Add the new ID to the report data
+        detector.add_report(new_report_data)
+        app.logger.info(f"New complaint #{new_complaint_id} added to the live detector.")
+
+    if is_duplicate:
+        return jsonify({'message': f'Complaint registered, but it appears to be a duplicate of report #{original_id}. Your report has been linked.'}), 200
+    else:
+        return jsonify({'message': 'Complaint registered successfully.'}), 200
 
 
 # Debug utility routes
