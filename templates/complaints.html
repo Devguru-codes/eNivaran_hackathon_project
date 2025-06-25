@@ -236,7 +236,7 @@
                                                                 {complaint.text}
                                                                 {complaint.image && (
                                                                     <div className="mt-1">
-                                                                        <img src={complaint.image} alt="Complaint" className="img-thumbnail" style={{maxWidth: "80px"}} />
+                                                                        <img src={`data:image/jpeg;base64,${complaint.image}`} alt="Complaint" className="img-thumbnail" style={{maxWidth: "80px"}} />
                                                                     </div>
                                                                 )}
                                                             </div>
