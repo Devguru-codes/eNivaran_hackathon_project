@@ -346,3 +346,4 @@ const ToolsApp = () => {
 
 // Initialize the app
 ReactDOM.render(<ToolsApp />, document.getElementById('app-root'));
+
